@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use pipewire::spa::pod::deserialize::PodDeserializer;
-use pipewire::spa::pod::{Object, Value};
+use pipewire::spa::pod::{Object, Value, ValueArray};
 use pipewire::spa::sys;
 use sordino_core::ipc::{Device, DeviceKind, ProfileInfo};
 use sordino_core::profile::classify;
@@ -18,6 +18,8 @@ pub struct SourceNode {
     pub bus: Option<String>,
     pub form_factor: Option<String>,
     pub api: Option<String>,
+    /// `card.profile.device`: which of the card's routes (ports) belongs to this node.
+    pub profile_device: Option<i32>,
 }
 
 /// What we know about a device (card) object.
@@ -25,6 +27,31 @@ pub struct SourceNode {
 pub struct CardInfo {
     pub profiles: Vec<ProfileInfo>,
     pub active: Option<i32>,
+    /// Active routes: where the card's volume and mute live (what `wpctl` and the desktop change).
+    pub routes: Vec<RouteInfo>,
+}
+
+/// One active route (port) of a card with its volume and mute state.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RouteInfo {
+    pub index: i32,
+    pub device: i32,
+    /// `true` for outputs (playback), `false` for inputs (capture).
+    pub output: bool,
+    /// Linear channel volumes as PipeWire stores them.
+    pub volumes: Vec<f32>,
+    pub mute: bool,
+}
+
+impl RouteInfo {
+    /// Volume on the user-facing (cubic) scale used by `wpctl`, KDE and GNOME.
+    pub fn user_volume(&self) -> Option<f32> {
+        if self.volumes.is_empty() {
+            return None;
+        }
+        let avg = self.volumes.iter().sum::<f32>() / self.volumes.len() as f32;
+        Some(avg.max(0.0).cbrt())
+    }
 }
 
 impl SourceNode {
@@ -52,6 +79,7 @@ impl SourceNode {
             bus: get("device.bus"),
             form_factor: get("device.form-factor"),
             api: get("device.api"),
+            profile_device: get("card.profile.device").and_then(|v| v.parse().ok()),
         })
     }
 
@@ -204,6 +232,96 @@ pub fn profile_pod(index: i32) -> Option<Vec<u8>> {
         .map(|(c, _)| c.into_inner())
 }
 
+/// Parse one `Route` pod.
+pub fn parse_route(bytes: &[u8]) -> Option<RouteInfo> {
+    let (_, value) = PodDeserializer::deserialize_any_from(bytes).ok()?;
+    let Value::Object(Object { properties, .. }) = value else {
+        return None;
+    };
+    let (mut index, mut device, mut output) = (None, None, false);
+    let (mut volumes, mut mute) = (Vec::new(), false);
+    for p in properties {
+        match (p.key, p.value) {
+            (sys::SPA_PARAM_ROUTE_index, Value::Int(v)) => index = Some(v),
+            (sys::SPA_PARAM_ROUTE_device, Value::Int(v)) => device = Some(v),
+            (sys::SPA_PARAM_ROUTE_direction, Value::Id(id)) => {
+                output = id.0 == sys::SPA_DIRECTION_OUTPUT
+            }
+            (sys::SPA_PARAM_ROUTE_props, Value::Object(Object { properties, .. })) => {
+                for q in properties {
+                    match (q.key, q.value) {
+                        (sys::SPA_PROP_channelVolumes, Value::ValueArray(ValueArray::Float(v))) => {
+                            volumes = v
+                        }
+                        (sys::SPA_PROP_mute, Value::Bool(b)) => mute = b,
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Some(RouteInfo {
+        index: index?,
+        device: device?,
+        output,
+        volumes,
+        mute,
+    })
+}
+
+/// Build the pod that changes a route's volume (user scale, 0..1) and/or mute state. `save`
+/// lets WirePlumber remember it, exactly like a change made in the desktop's sound settings.
+pub fn route_pod(route: &RouteInfo, volume: Option<f32>, mute: Option<bool>) -> Option<Vec<u8>> {
+    use pipewire::spa::pod::{serialize::PodSerializer, Property, PropertyFlags};
+    let prop = |key, value| Property {
+        key,
+        flags: PropertyFlags::empty(),
+        value,
+    };
+    let mut props = Vec::new();
+    if let Some(v) = volume {
+        let linear = v.clamp(0.0, 1.0).powi(3);
+        let channels = route.volumes.len().max(1);
+        props.push(prop(
+            sys::SPA_PROP_channelVolumes,
+            Value::ValueArray(ValueArray::Float(vec![linear; channels])),
+        ));
+    }
+    if let Some(m) = mute {
+        props.push(prop(sys::SPA_PROP_mute, Value::Bool(m)));
+    }
+    let direction = if route.output {
+        sys::SPA_DIRECTION_OUTPUT
+    } else {
+        sys::SPA_DIRECTION_INPUT
+    };
+    let obj = Object {
+        type_: sys::SPA_TYPE_OBJECT_ParamRoute,
+        id: sys::SPA_PARAM_Route,
+        properties: vec![
+            prop(sys::SPA_PARAM_ROUTE_index, Value::Int(route.index)),
+            prop(
+                sys::SPA_PARAM_ROUTE_direction,
+                Value::Id(pipewire::spa::utils::Id(direction)),
+            ),
+            prop(sys::SPA_PARAM_ROUTE_device, Value::Int(route.device)),
+            prop(
+                sys::SPA_PARAM_ROUTE_props,
+                Value::Object(Object {
+                    type_: sys::SPA_TYPE_OBJECT_Props,
+                    id: sys::SPA_PARAM_Route,
+                    properties: props,
+                }),
+            ),
+            prop(sys::SPA_PARAM_ROUTE_save, Value::Bool(true)),
+        ],
+    };
+    PodSerializer::serialize(std::io::Cursor::new(Vec::new()), &Value::Object(obj))
+        .ok()
+        .map(|(c, _)| c.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,6 +335,7 @@ mod tests {
             bus: bus.map(Into::into),
             form_factor: ff.map(Into::into),
             api: None,
+            profile_device: None,
         }
     }
 
@@ -269,6 +388,32 @@ mod tests {
             _ => None,
         };
         assert!(SourceNode::from_props(1, props).is_none());
+    }
+
+    #[test]
+    fn route_pod_roundtrips_on_the_user_scale() {
+        let r = RouteInfo {
+            index: 3,
+            device: 7,
+            output: false,
+            volumes: vec![1.0],
+            mute: false,
+        };
+        let back = parse_route(&route_pod(&r, Some(0.8), Some(true)).unwrap()).unwrap();
+        assert_eq!((back.index, back.device, back.output), (3, 7, false));
+        assert!(back.mute);
+        assert!((back.user_volume().unwrap() - 0.8).abs() < 1e-4);
+        assert!(
+            (back.volumes[0] - 0.512).abs() < 1e-4,
+            "stored linearly like wpctl"
+        );
+        let out = RouteInfo {
+            output: true,
+            volumes: vec![0.5, 0.5],
+            ..r
+        };
+        let back = parse_route(&route_pod(&out, None, Some(false)).unwrap()).unwrap();
+        assert!(back.output && !back.mute && back.volumes.is_empty());
     }
 
     #[test]

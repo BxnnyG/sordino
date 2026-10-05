@@ -88,6 +88,11 @@ impl Iface {
         self.send(Cmd::SetAbOriginal(on))
     }
 
+    /// Panic mute: `true` silences Sordino Mic and mutes the real output, `false` undoes both.
+    fn panic(&self, on: bool) -> fdo::Result<()> {
+        self.send(Cmd::Panic(on))
+    }
+
     fn restore_default(&self) -> fdo::Result<()> {
         self.send(Cmd::RestoreDefault)
     }

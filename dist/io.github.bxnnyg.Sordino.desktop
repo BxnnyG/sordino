@@ -11,3 +11,14 @@ Terminal=false
 Categories=AudioVideo;Audio;
 Keywords=microphone;noise;krisp;rnnoise;pipewire;mikrofon;rauschen;
 StartupWMClass=sordino
+Actions=mute;panic;
+
+[Desktop Action mute]
+Name=Mute microphone (toggle)
+Name[de]=Mikro stumm (umschalten)
+Exec=sordinoctl mute
+
+[Desktop Action panic]
+Name=Mute everything: microphone and headphones (toggle)
+Name[de]=Alles stumm: Mikro und Kopfhörer (umschalten)
+Exec=sordinoctl panic

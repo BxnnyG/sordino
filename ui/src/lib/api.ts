@@ -8,6 +8,7 @@ export const api = {
   apply: (patch: Patch<Settings>) => invoke<void>('apply', { patch: JSON.stringify(patch) }),
   setProfile: (card: number, index: number) => invoke<void>('set_profile', { card, index }),
   setMonitor: (on: boolean) => invoke<void>('set_monitor', { on }),
+  panic: (on: boolean) => invoke<void>('panic', { on }),
   setAbOriginal: (on: boolean) => invoke<void>('set_ab_original', { on }),
   setWatching: (on: boolean) => invoke<void>('set_watching', { on }),
   getAutostart: () => invoke<AutostartStatus>('get_autostart'),

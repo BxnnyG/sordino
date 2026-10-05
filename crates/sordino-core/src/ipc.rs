@@ -109,6 +109,16 @@ pub struct State {
     /// Values of the built-in studio presets, so UIs can seed their advanced sliders.
     pub presets: BTreeMap<String, StudioParams>,
     pub diag: Diag,
+    /// Current input level of the active microphone (0..1, same scale as `wpctl`), if the device
+    /// lets us read and set it.
+    #[serde(default)]
+    pub mic_volume: Option<f32>,
+    /// The real output (headphones/speakers) is muted.
+    #[serde(default)]
+    pub output_muted: bool,
+    /// Panic mute is on: Sordino Mic is silent and Sordino muted the output.
+    #[serde(default)]
+    pub panic: bool,
 }
 
 pub fn builtin_presets() -> BTreeMap<String, StudioParams> {
@@ -142,6 +152,8 @@ pub struct Diag {
     /// Callback number of the most recent skip / cycle number of the most recent input drop.
     pub last_skip_cb: u64,
     pub last_drop_cycle: u64,
+    /// Hops where the microphone signal hit full scale (clipping, the input level is too high).
+    pub clipped_hops: u64,
 }
 
 /// Live levels, pushed ~20 times per second while a client is watching.
@@ -179,6 +191,9 @@ mod tests {
             echo_available: true,
             presets: builtin_presets(),
             diag: Diag::default(),
+            mic_volume: Some(0.8),
+            output_muted: false,
+            panic: false,
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: State = serde_json::from_str(&json).unwrap();

@@ -65,7 +65,39 @@ impl SpeakerSettings {
             studio: None,
             // Other people's apps already decide when they talk.
             pause_mute: false,
+            mute: false,
         }
+    }
+}
+
+/// Input level of the physical microphone, applied whenever it appears.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct MicLevelSettings {
+    /// 0..1 on the same scale as `wpctl set-volume` and the desktop's sound settings;
+    /// `None` leaves the level alone.
+    pub volume: Option<f32>,
+    /// Lower the level a little whenever the microphone clips.
+    pub avoid_clipping: bool,
+}
+
+impl Default for MicLevelSettings {
+    fn default() -> Self {
+        MicLevelSettings {
+            volume: None,
+            avoid_clipping: true,
+        }
+    }
+}
+
+impl MicLevelSettings {
+    /// Lowest level the clipping guard goes down to on its own.
+    pub const GUARD_FLOOR: f32 = 0.4;
+
+    pub fn sanitized_volume(&self) -> Option<f32> {
+        self.volume
+            .filter(|v| v.is_finite())
+            .map(|v| v.clamp(0.0, 1.0))
     }
 }
 
@@ -111,6 +143,10 @@ pub struct Settings {
     pub show_all_devices: bool,
     /// Automatically correct the microphone's tonal balance (see `autoeq`).
     pub auto_eq: bool,
+    /// Sordino Mic sends silence (mute button / panic). Kept across restarts on purpose: a crash
+    /// must never turn a muted microphone back on.
+    pub muted: bool,
+    pub mic_level: MicLevelSettings,
     pub noise: NoiseSettings,
     pub echo: EchoSettings,
     pub studio: StudioSettings,
@@ -126,6 +162,8 @@ impl Default for Settings {
             run_in_background: true,
             show_all_devices: false,
             auto_eq: true,
+            muted: false,
+            mic_level: MicLevelSettings::default(),
             noise: NoiseSettings::default(),
             echo: EchoSettings::default(),
             studio: StudioSettings::default(),
@@ -143,6 +181,7 @@ impl Settings {
             auto_eq: self.auto_eq,
             studio: self.studio.effective(),
             pause_mute: self.noise.pause_mute,
+            mute: self.muted,
         }
     }
 
@@ -346,6 +385,19 @@ mod tests {
         let p = s.speaker.pipeline_params();
         assert!(p.noise && !p.echo && p.studio.is_none());
         assert!(!p.pause_mute);
+    }
+
+    #[test]
+    fn mute_and_mic_level_defaults() {
+        let s = Settings::default();
+        assert!(!s.muted && !s.pipeline_params().mute);
+        assert_eq!(s.mic_level.volume, None);
+        assert!(s.mic_level.avoid_clipping);
+        let n = s
+            .patched(&serde_json::json!({"muted": true, "mic_level": {"volume": 1.7}}))
+            .unwrap();
+        assert!(n.pipeline_params().mute);
+        assert_eq!(n.mic_level.sanitized_volume(), Some(1.0));
     }
 
     #[test]

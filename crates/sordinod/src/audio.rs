@@ -137,6 +137,8 @@ pub struct WorkerShared {
     /// Times the DSP thread fell behind real time, and hops processed without the noise model.
     pub overload_events: AtomicU32,
     pub overload_hops: AtomicU64,
+    /// Hops in which the microphone signal reached full scale.
+    pub clipped_hops: AtomicU64,
 }
 
 pub enum WorkerHealth {
@@ -166,6 +168,7 @@ impl Worker {
             model_errors: AtomicU32::new(0),
             overload_events: AtomicU32::new(0),
             overload_hops: AtomicU64::new(0),
+            clipped_hops: AtomicU64::new(0),
         });
         let s = shared.clone();
         let handle = thread::Builder::new()
@@ -328,6 +331,10 @@ fn worker_loop(
                     shared.overload_hops.fetch_add(1, Ordering::Relaxed);
                 }
                 inp.pop_slice(&mut dry);
+                // Two or more samples at full scale: the microphone level is too high.
+                if dry.iter().filter(|x| x.abs() >= 0.999).count() >= 2 {
+                    shared.clipped_hops.fetch_add(1, Ordering::Relaxed);
+                }
                 // Echo reference: the newest hop if available, otherwise silence.
                 refbuf.fill(0.0);
                 if let Some(r) = reference.as_mut() {

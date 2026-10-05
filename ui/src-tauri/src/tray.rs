@@ -12,6 +12,8 @@ use crate::App;
 pub struct TrayItems {
     enabled: CheckMenuItem<tauri::Wry>,
     noise: CheckMenuItem<tauri::Wry>,
+    muted: CheckMenuItem<tauri::Wry>,
+    panic: CheckMenuItem<tauri::Wry>,
     status: MenuItem<tauri::Wry>,
 }
 
@@ -62,6 +64,25 @@ pub fn build(app: &AppHandle, shared: &Arc<App>) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    let muted = CheckMenuItem::with_id(
+        app,
+        "muted",
+        tr("Mikro stumm", "Mute microphone"),
+        true,
+        false,
+        None::<&str>,
+    )?;
+    let panic = CheckMenuItem::with_id(
+        app,
+        "panic",
+        tr(
+            "Alles stumm (Mikro + Kopfhörer)",
+            "Mute everything (mic + headphones)",
+        ),
+        true,
+        false,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(
         app,
         "quit",
@@ -75,6 +96,10 @@ pub fn build(app: &AppHandle, shared: &Arc<App>) -> tauri::Result<()> {
             &status,
             &PredefinedMenuItem::separator(app)?,
             &open,
+            &PredefinedMenuItem::separator(app)?,
+            &muted,
+            &panic,
+            &PredefinedMenuItem::separator(app)?,
             &enabled,
             &noise,
             &PredefinedMenuItem::separator(app)?,
@@ -85,6 +110,8 @@ pub fn build(app: &AppHandle, shared: &Arc<App>) -> tauri::Result<()> {
     *shared.tray.lock().unwrap() = Some(TrayItems {
         enabled: enabled.clone(),
         noise: noise.clone(),
+        muted: muted.clone(),
+        panic: panic.clone(),
         status,
     });
 
@@ -101,6 +128,13 @@ pub fn build(app: &AppHandle, shared: &Arc<App>) -> tauri::Result<()> {
                 "open" => crate::show_main_window(app),
                 "enabled" => toggle(&shared, |s| serde_json::json!({ "enabled": !s["settings"]["enabled"].as_bool().unwrap_or(true) })),
                 "noise" => toggle(&shared, |s| serde_json::json!({ "noise": { "enabled": !s["settings"]["noise"]["enabled"].as_bool().unwrap_or(true) } })),
+                "muted" => toggle(&shared, |s| serde_json::json!({ "muted": !s["settings"]["muted"].as_bool().unwrap_or(false) })),
+                "panic" => {
+                    let on = !shared.last.lock().unwrap().as_ref().and_then(|s| s["panic"].as_bool()).unwrap_or(false);
+                    tauri::async_runtime::spawn(async move {
+                        let _ = shared.bus.call("Panic", &(on,)).await;
+                    });
+                }
                 "quit" => {
                     let app = app.clone();
                     tauri::async_runtime::spawn(async move { crate::quit_everything(&app, &shared).await });
@@ -132,12 +166,20 @@ pub fn refresh(_app: &AppHandle, shared: &Arc<App>) {
         let _ = items
             .status
             .set_text(tr("Sordino läuft nicht", "Sordino is not running"));
-        let _ = items.enabled.set_enabled(false);
-        let _ = items.noise.set_enabled(false);
+        for i in [&items.enabled, &items.noise, &items.muted, &items.panic] {
+            let _ = i.set_enabled(false);
+        }
         return;
     };
-    let _ = items.enabled.set_enabled(true);
-    let _ = items.noise.set_enabled(true);
+    for i in [&items.enabled, &items.noise, &items.muted, &items.panic] {
+        let _ = i.set_enabled(true);
+    }
+    let _ = items
+        .muted
+        .set_checked(state["settings"]["muted"].as_bool().unwrap_or(false));
+    let _ = items
+        .panic
+        .set_checked(state["panic"].as_bool().unwrap_or(false));
     let _ = items
         .enabled
         .set_checked(state["settings"]["enabled"].as_bool().unwrap_or(true));
@@ -147,6 +189,10 @@ pub fn refresh(_app: &AppHandle, shared: &Arc<App>) {
             .unwrap_or(true),
     );
     let text = match state["status"].as_str().unwrap_or("") {
+        _ if state["panic"].as_bool() == Some(true) => tr("Alles stumm", "Everything muted"),
+        _ if state["settings"]["muted"].as_bool() == Some(true) => {
+            tr("Mikro stumm", "Microphone muted")
+        }
         "running" => tr("Sordino Mic aktiv", "Sordino Mic active"),
         "off" => tr("Pausiert", "Paused"),
         "mic_missing" => tr("Mikrofon getrennt", "Microphone disconnected"),

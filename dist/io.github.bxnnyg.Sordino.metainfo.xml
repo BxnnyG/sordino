@@ -59,6 +59,11 @@
     <color type="primary" scheme_preference="dark">#0a49c9</color>
   </branding>
   <releases>
+    <release version="0.1.3" date="2026-10-05">
+      <description>
+        <p>Mute button and a panic mute for microphone and headphones, adjustable input level and an automatic guard against a distorting microphone.</p>
+      </description>
+    </release>
     <release version="0.1.2" date="2026-10-05">
       <description>
         <p>Silence between words: your microphone is muted while you are not talking, so typing in pauses is not heard.</p>

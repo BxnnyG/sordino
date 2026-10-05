@@ -49,6 +49,11 @@ async fn set_monitor(app: Shared<'_>, on: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn panic(app: Shared<'_>, on: bool) -> Result<(), String> {
+    app.bus.call("Panic", &(on,)).await
+}
+
+#[tauri::command]
 async fn set_ab_original(app: Shared<'_>, on: bool) -> Result<(), String> {
     app.bus.call("SetAbOriginal", &(on,)).await
 }
@@ -229,6 +234,7 @@ fn main() {
             apply,
             set_profile,
             set_monitor,
+            panic,
             set_ab_original,
             set_watching,
             start_daemon,

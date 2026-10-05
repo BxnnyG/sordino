@@ -21,6 +21,8 @@ pub struct PipelineParams {
     pub studio: Option<StudioParams>,
     /// Mute between words (see [`crate::speech_gate`]). Only acts while noise suppression runs.
     pub pause_mute: bool,
+    /// Send silence (mute button). Fades over one hop.
+    pub mute: bool,
 }
 
 impl Default for PipelineParams {
@@ -32,6 +34,7 @@ impl Default for PipelineParams {
             auto_eq: true,
             studio: StudioParams::default().into(),
             pause_mute: true,
+            mute: false,
         }
     }
 }
@@ -47,6 +50,8 @@ pub struct Pipeline {
     echo_mix: f32,
     noise_mix: f32,
     studio_mix: f32,
+    /// 1 = audible, 0 = muted.
+    mute_gain: f32,
     stage: [f32; HOP],
     scratch: [f32; HOP],
     /// The caller is falling behind real time: skip the expensive noise stage until it catches up.
@@ -81,6 +86,7 @@ impl Pipeline {
             echo_mix: 0.0,
             noise_mix: if params.noise { 1.0 } else { 0.0 },
             studio_mix: if params.studio.is_some() { 1.0 } else { 0.0 },
+            mute_gain: if params.mute { 0.0 } else { 1.0 },
             stage: [0.0; HOP],
             scratch: [0.0; HOP],
             overloaded: false,
@@ -244,6 +250,18 @@ impl Pipeline {
             self.params.pause_mute && noise_target > 0.0,
         );
 
+        // Mute button.
+        let mute_target = if self.params.mute { 0.0 } else { 1.0 };
+        if self.mute_gain != 1.0 || mute_target != 1.0 {
+            crossfade(
+                &mut self.stage,
+                &SILENCE,
+                1.0 - self.mute_gain,
+                1.0 - mute_target,
+            );
+            self.mute_gain = mute_target;
+        }
+
         // Never hand NaN/inf to the graph (a single one can poison downstream filters).
         for (o, s) in output.iter_mut().zip(self.stage.iter()) {
             *o = if s.is_finite() { *s } else { 0.0 };
@@ -288,6 +306,7 @@ mod tests {
             auto_eq: false,
             studio: None,
             pause_mute: false,
+            mute: false,
         }
     }
 
@@ -326,6 +345,25 @@ mod tests {
         assert!(out.iter().all(|v| v.is_finite()));
         assert!(rms_db(&out) < 0.0);
         assert!(p.latency_samples() > 0);
+    }
+
+    #[test]
+    fn mute_fades_to_silence_and_back() {
+        let mut p = Pipeline::new(off()).unwrap();
+        let x = tone(HOP * 10);
+        let mut params = p.params();
+        params.mute = true;
+        p.set_params(params);
+        let y = run(&mut p, &x);
+        assert!(
+            y[HOP..].iter().all(|v| *v == 0.0),
+            "silent after the fade hop"
+        );
+        assert!(y[..HOP].iter().all(|v| v.abs() <= 0.2 + 1e-6));
+        params.mute = false;
+        p.set_params(params);
+        let z = run(&mut p, &x);
+        assert_eq!(&z[HOP..], &x[HOP..], "bit-exact again after the fade hop");
     }
 
     #[test]
@@ -369,6 +407,7 @@ mod overload_tests {
             auto_eq: false,
             studio: None,
             pause_mute: false,
+            mute: false,
         })
         .unwrap();
         let x: Vec<f32> = (0..HOP * 40)

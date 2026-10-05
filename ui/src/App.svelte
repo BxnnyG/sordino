@@ -51,6 +51,19 @@
     }
   }
 
+  // The level slider follows the device, but while dragging it shows the dragged value and only
+  // sends the last one (every change is written to the device and the settings file).
+  let levelDrag = $state<number | null>(null);
+  let levelTimer: ReturnType<typeof setTimeout> | undefined;
+  function setLevel(v: number) {
+    levelDrag = v;
+    clearTimeout(levelTimer);
+    levelTimer = setTimeout(() => {
+      store.apply({ mic_level: { volume: Math.round(v * 100) / 100 } });
+      setTimeout(() => (levelDrag = null), 600);
+    }, 150);
+  }
+
   let ab = $state(false);
   function abDown() {
     ab = true;
@@ -96,6 +109,25 @@
       <div class="banner warn"><strong>{t('status.mic_missing')}</strong><p>{t('error.micmissing')}</p></div>
     {/if}
 
+    <div class="mutebar">
+      <button
+        class="mute {s.settings.muted ? 'on' : ''}"
+        aria-pressed={s.settings.muted}
+        onclick={() => store.apply({ muted: !s.settings.muted })}
+      >
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" />{#if s.settings.muted}<path d="M4 4l16 16" />{/if}</svg>
+        {s.settings.muted ? t('mute.unmute') : t('mute.mute')}
+      </button>
+      <button class="panic {s.panic ? 'on' : ''}" aria-pressed={s.panic} onclick={() => api.panic(!s.panic)}>
+        {s.panic ? t('panic.off') : t('panic.on')}
+      </button>
+    </div>
+    {#if s.panic}
+      <div class="banner bad"><strong>{t('panic.active')}</strong><p>{t('panic.hint')}</p></div>
+    {:else if s.settings.muted}
+      <div class="banner bad"><strong>{t('mute.active')}</strong></div>
+    {/if}
+
     {#if s.profile_hint}
       <div class="banner warn">
         <strong>{t('profile.title')}</strong>
@@ -124,6 +156,30 @@
         <LevelMeter label={t('meter.mic')} db={store.levels.input_db} active={running} />
         <LevelMeter label={t('meter.out')} db={store.levels.output_db} active={running} />
       </div>
+      {#if s.mic_volume !== null && s.mic_volume !== undefined}
+        <div class="level">
+          <Slider
+            label={t('level.title')}
+            min={0}
+            max={1}
+            step={0.01}
+            value={levelDrag ?? s.mic_volume}
+            format={(v) => `${Math.round(v * 100)} %`}
+            onchange={setLevel}
+          />
+          <div class="line guard">
+            <div>
+              <span>{t('level.guard')}</span>
+              <small>{t('level.guard_sub')}</small>
+            </div>
+            <Toggle
+              label={t('level.guard')}
+              checked={s.settings.mic_level.avoid_clipping}
+              onchange={(v) => store.apply({ mic_level: { avoid_clipping: v } })}
+            />
+          </div>
+        </div>
+      {/if}
     </Card>
 
     <Card title={t('noise.title')} sub={t('noise.sub')}>
@@ -355,6 +411,44 @@
     display: block;
     color: var(--sub);
     font-size: 12.5px;
+  }
+  .mutebar {
+    display: flex;
+    gap: 10px;
+  }
+  .mutebar button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: inherit;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mutebar button.on {
+    background: var(--bad);
+    border-color: var(--bad);
+    color: #fff;
+  }
+  .mutebar .panic:not(.on) {
+    color: var(--bad);
+    border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+  }
+  .level {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .guard {
+    margin-top: 10px;
+    font-size: 13.5px;
   }
   .pause {
     margin-top: 14px;

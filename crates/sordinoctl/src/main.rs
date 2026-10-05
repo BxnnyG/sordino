@@ -25,6 +25,12 @@ USAGE: sordinoctl <command>
   autoeq on|off               automatic microphone correction (fixes dull mics)
   pause-mute on|off           silence between words (mutes typing in pauses)
   echo on|off                 echo suppression (others hearing themselves from your speakers)
+  mute [on|off|toggle]        mute Sordino Mic (default: toggle)
+  panic [on|off|toggle]       mute Sordino Mic AND your headphones/speakers (default: toggle);
+                              bind it to a key in your desktop's shortcut settings
+  mic-level <0-100|off>       input level of the microphone, applied whenever it is plugged in
+                              ('off' = leave it to the desktop's sound settings)
+  clip-guard on|off           lower the input level automatically when the microphone clips
   speaker on|off              clean incoming voices (play your apps into 'Sordino Speaker')
   speaker light|medium|high|max
                               strength for incoming voices
@@ -108,6 +114,14 @@ fn on_off(arg: Option<&String>) -> Result<bool> {
     }
 }
 
+/// `on`, `off` or `toggle` (also the default when nothing is given) against the current value.
+fn on_off_toggle(arg: Option<&String>, current: bool) -> Result<bool> {
+    match arg.map(String::as_str) {
+        None | Some("toggle") => Ok(!current),
+        _ => on_off(arg),
+    }
+}
+
 fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let cmd = args.first().map(String::as_str).unwrap_or("status");
@@ -140,6 +154,26 @@ fn run() -> Result<()> {
             }
             if let Some(m) = &s.active_mic {
                 println!("  microphone: {m}");
+            }
+            if s.panic {
+                println!("  PANIC MUTE: microphone and output muted ('sordinoctl panic' to undo)");
+            } else if s.settings.muted {
+                println!("  Sordino Mic is MUTED ('sordinoctl mute' to undo)");
+            }
+            if let Some(v) = s.mic_volume {
+                println!(
+                    "  input level: {:.0} %{}{}",
+                    v * 100.0,
+                    match s.settings.mic_level.sanitized_volume() {
+                        Some(want) => format!(" (set to {:.0} % at plug-in)", want * 100.0),
+                        None => String::new(),
+                    },
+                    if s.settings.mic_level.avoid_clipping {
+                        ", clipping guard on"
+                    } else {
+                        ""
+                    }
+                );
             }
             println!(
                 "  noise suppression: {} ({:?})",
@@ -223,6 +257,10 @@ fn run() -> Result<()> {
             );
             println!("model errors:       {}", d.model_errors);
             println!(
+                "clipped:            {} hops (microphone level too high)",
+                d.clipped_hops
+            );
+            println!(
                 "overload:           {} episodes, {} hops ({:.1} s) without noise suppression",
                 d.overload_events,
                 d.overload_hops,
@@ -288,6 +326,37 @@ fn run() -> Result<()> {
         "default" => c.apply(json!({"set_default": on_off(args.get(1))?}))?,
         "autoeq" => c.apply(json!({"auto_eq": on_off(args.get(1))?}))?,
         "echo" => c.apply(json!({"echo": {"enabled": on_off(args.get(1))?}}))?,
+        "mute" => {
+            let on = on_off_toggle(args.get(1), c.state()?.settings.muted)?;
+            c.apply(json!({ "muted": on }))?;
+            println!("Sordino Mic {}", if on { "muted" } else { "live" });
+        }
+        "panic" => {
+            let on = on_off_toggle(args.get(1), c.state()?.panic)?;
+            c.proxy.call::<_, _, ()>("Panic", &(on,))?;
+            println!(
+                "{}",
+                if on {
+                    "panic mute: microphone and output muted"
+                } else {
+                    "panic mute off: microphone and output back on"
+                }
+            );
+        }
+        "mic-level" => match args.get(1).map(String::as_str) {
+            Some("off") => c.apply(json!({"mic_level": {"volume": null}}))?,
+            Some(v) => {
+                let pct: f32 = v
+                    .trim_end_matches('%')
+                    .parse()
+                    .ok()
+                    .filter(|p: &f32| (0.0..=100.0).contains(p))
+                    .context("usage: sordinoctl mic-level <0-100|off>")?;
+                c.apply(json!({"mic_level": {"volume": pct / 100.0}}))?
+            }
+            None => bail!("usage: sordinoctl mic-level <0-100|off>"),
+        },
+        "clip-guard" => c.apply(json!({"mic_level": {"avoid_clipping": on_off(args.get(1))?}}))?,
         "pause-mute" => c.apply(json!({"noise": {"pause_mute": on_off(args.get(1))?}}))?,
         "speaker" => match args.get(1).map(String::as_str) {
             Some("on") => c.apply(json!({"speaker": {"enabled": true}}))?,

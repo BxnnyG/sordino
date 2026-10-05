@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.3
+
+* **Mute button and panic mute.** "Mute mic" silences Sordino Mic (it stays muted across
+  restarts, so a crash never turns it back on). "Mute everything" also mutes your real
+  headphones/speakers and undoes both with one click. In the app, the tray menu, the CLI
+  (`sordinoctl mute`, `sordinoctl panic`) and as desktop actions, so you can bind them to a key
+  in your desktop's shortcut settings (the desktop handles the key, Sordino reads no keys).
+* **Input level.** Set your microphone's level in the app or with `sordinoctl mic-level 80`;
+  Sordino applies it whenever the microphone appears (same scale as `wpctl set-volume`).
+* **Clipping guard** (on by default): when the microphone distorts, Sordino lowers its level
+  in small steps (never below 40 %). `sordinoctl clip-guard on|off`; clipped hops in `diag`.
+
 ## 0.1.2
 
 * **Silence between words** (on by default). Sordino Mic is muted while you are not talking, so

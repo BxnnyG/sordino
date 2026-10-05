@@ -56,6 +56,8 @@ pub enum Cmd {
         name: String,
     },
     SetAbOriginal(bool),
+    /// Panic mute: silence Sordino Mic and mute the real output, or undo both.
+    Panic(bool),
     /// Put the system default microphone back to what it was before Sordino.
     RestoreDefault,
     StreamError(&'static str, String),
@@ -149,6 +151,16 @@ pub struct Engine {
     monitor: Option<AudioStream>,
     overrode_default: bool,
 
+    // levels and muting
+    /// Microphone node (name, node id) the configured input level was last applied to.
+    mic_level_applied: Option<(String, u32)>,
+    /// Clipped-hop counter value already looked at, and when the guard last lowered the level.
+    clip_seen: u64,
+    last_clip_adjust: Option<Instant>,
+    /// Panic mute is on; `panic_sink` is the output Sordino muted (and will unmute again).
+    panic: bool,
+    panic_sink: Option<String>,
+
     // health
     status: Status,
     error: Option<String>,
@@ -230,6 +242,11 @@ impl Engine {
             reference_target: None,
             monitor: None,
             overrode_default: false,
+            mic_level_applied: None,
+            clip_seen: 0,
+            last_clip_adjust: None,
+            panic: false,
+            panic_sink: None,
             status: Status::Starting,
             error: None,
             failures: 0,
@@ -459,6 +476,7 @@ impl Engine {
             .register();
         device.enum_params(0, Some(ParamType::EnumProfile), 0, u32::MAX);
         device.enum_params(1, Some(ParamType::Profile), 0, u32::MAX);
+        device.enum_params(2, Some(ParamType::Route), 0, u32::MAX);
         self.card_proxies.insert(
             id,
             CardProxy {
@@ -475,6 +493,7 @@ impl Engine {
                 .enum_params(0, Some(ParamType::EnumProfile), 0, u32::MAX);
             c.device
                 .enum_params(1, Some(ParamType::Profile), 0, u32::MAX);
+            c.device.enum_params(2, Some(ParamType::Route), 0, u32::MAX);
         }
     }
 
@@ -492,6 +511,16 @@ impl Engine {
             }
             ParamType::Profile => {
                 card.active = devices::parse_profile_index(pod.as_bytes());
+            }
+            ParamType::Route => {
+                if index == 0 {
+                    card.routes.clear();
+                }
+                if let Some(r) = devices::parse_route(pod.as_bytes()) {
+                    card.routes
+                        .retain(|x| !(x.index == r.index && x.device == r.device));
+                    card.routes.push(r);
+                }
             }
             _ => return,
         }
@@ -563,9 +592,18 @@ impl Engine {
         match cmd {
             Cmd::Apply(patch) => match self.settings.patched(&patch) {
                 Ok(s) => {
+                    if s.mic_level.volume != self.settings.mic_level.volume {
+                        self.mic_level_applied = None;
+                    }
+                    let unmuted = self.settings.muted && !s.muted;
                     self.settings = s;
+                    if unmuted && self.panic {
+                        // Unmuting the microphone ends a panic mute as a whole.
+                        self.set_panic(false);
+                    }
                     self.save_settings();
                     self.reconcile();
+                    self.ensure_mic_level();
                 }
                 Err(e) => log::warn!("rejected settings patch: {e}"),
             },
@@ -590,6 +628,11 @@ impl Engine {
                 }
             }
             Cmd::SetDefaultDevice { sink, name } => self.set_default_device(sink, &name),
+            Cmd::Panic(on) => {
+                self.set_panic(on);
+                self.save_settings();
+                self.reconcile();
+            }
             Cmd::SetMonitor(on) => {
                 self.monitoring = on;
                 self.monitor_until = on.then(|| Instant::now() + MONITOR_KEEPALIVE);
@@ -673,6 +716,148 @@ impl Engine {
             if sink { "output" } else { "microphone" }
         );
         self.reconcile();
+    }
+
+    /// The route (volume/mute) of an input or output node, with the card it belongs to.
+    fn route_for(&self, name: &str, output: bool) -> Option<(u32, devices::RouteInfo)> {
+        let nodes = if output { &self.sinks } else { &self.sources };
+        let node = nodes.values().find(|n| n.name == name)?;
+        let card = node.card?;
+        let device = node.profile_device?;
+        let route = self
+            .cards
+            .get(&card)?
+            .routes
+            .iter()
+            .find(|r| r.device == device && r.output == output)?
+            .clone();
+        Some((card, route))
+    }
+
+    /// Change volume (user scale) and/or mute of a node's route. False if the device has none.
+    fn set_route(&self, name: &str, output: bool, volume: Option<f32>, mute: Option<bool>) -> bool {
+        let Some((card, route)) = self.route_for(name, output) else {
+            return false;
+        };
+        let Some(proxy) = self.card_proxies.get(&card) else {
+            return false;
+        };
+        let Some(bytes) = devices::route_pod(&route, volume, mute) else {
+            return false;
+        };
+        let Some(pod) = Pod::from_bytes(&bytes) else {
+            return false;
+        };
+        proxy.device.set_param(ParamType::Route, 0, pod);
+        true
+    }
+
+    /// The physical output the user listens on (never Sordino Speaker itself).
+    fn real_output(&self) -> Option<String> {
+        match self.default_sink.as_deref() {
+            Some(VIRTUAL_SPEAKER_NAME) | None => self
+                .speaker_target
+                .clone()
+                .or_else(|| self.foreign_default_sink.clone()),
+            Some(s) => Some(s.to_string()),
+        }
+    }
+
+    /// Apply the configured input level once per microphone node (start, hotplug, change).
+    /// Changes made later in the desktop's sound settings are left alone.
+    fn ensure_mic_level(&mut self) {
+        let Some(volume) = self.settings.mic_level.sanitized_volume() else {
+            return;
+        };
+        let Some(mic) = self.capture_target.clone() else {
+            return;
+        };
+        let Some(node_id) = self
+            .sources
+            .values()
+            .find(|s| s.name == mic)
+            .map(|s| s.node_id)
+        else {
+            return;
+        };
+        if self.mic_level_applied.as_ref() == Some(&(mic.clone(), node_id)) {
+            return;
+        }
+        if self.set_route(&mic, false, Some(volume), None) {
+            log::info!("microphone input level set to {:.0} %", volume * 100.0);
+            self.mic_level_applied = Some((mic, node_id));
+        }
+    }
+
+    /// Clipping guard: when the microphone hits full scale, lower its level a little (at most
+    /// every 5 s, never below `GUARD_FLOOR`) and remember the new level.
+    fn guard_clipping(&mut self) {
+        let Some(w) = &self.worker else { return };
+        let clipped = w
+            .shared
+            .clipped_hops
+            .load(std::sync::atomic::Ordering::Relaxed);
+        if clipped < self.clip_seen {
+            self.clip_seen = clipped; // new worker, counter restarted
+        }
+        if clipped == self.clip_seen {
+            return;
+        }
+        self.clip_seen = clipped;
+        if !self.settings.mic_level.avoid_clipping
+            || self
+                .last_clip_adjust
+                .is_some_and(|t| t.elapsed() < Duration::from_secs(5))
+        {
+            return;
+        }
+        let Some(mic) = self.capture_target.clone() else {
+            return;
+        };
+        let current = self
+            .settings
+            .mic_level
+            .sanitized_volume()
+            .or_else(|| self.route_for(&mic, false)?.1.user_volume());
+        let Some(current) = current else { return };
+        let floor = sordino_core::settings::MicLevelSettings::GUARD_FLOOR;
+        if current <= floor {
+            return;
+        }
+        let lower = (current - 0.03).max(floor);
+        self.last_clip_adjust = Some(Instant::now());
+        self.settings.mic_level.volume = Some(lower);
+        self.mic_level_applied = None;
+        self.save_settings();
+        log::info!(
+            "microphone clipped: lowering its level from {:.0} % to {:.0} %",
+            current * 100.0,
+            lower * 100.0
+        );
+        self.ensure_mic_level();
+        self.dirty();
+    }
+
+    fn set_panic(&mut self, on: bool) {
+        if on {
+            self.settings.muted = true;
+            if self.panic_sink.is_none() {
+                if let Some(out) = self.real_output() {
+                    let already = self.route_for(&out, true).is_some_and(|(_, r)| r.mute);
+                    if !already && self.set_route(&out, true, None, Some(true)) {
+                        self.panic_sink = Some(out);
+                    }
+                }
+            }
+            log::info!("panic mute on");
+        } else {
+            self.settings.muted = false;
+            if let Some(out) = self.panic_sink.take() {
+                self.set_route(&out, true, None, Some(false));
+            }
+            log::info!("panic mute off");
+        }
+        self.panic = on;
     }
 
     fn save_settings(&self) {
@@ -1168,6 +1353,8 @@ impl Engine {
         if let Some(msg) = stream_error {
             return self.fail_chain(msg);
         }
+        self.ensure_mic_level();
+        self.guard_clipping();
         if self
             .stable_since
             .is_some_and(|t| t.elapsed() > Duration::from_secs(30))
@@ -1274,6 +1461,16 @@ impl Engine {
             }),
             presets: sordino_core::ipc::builtin_presets(),
             diag: self.diag(),
+            mic_volume: self
+                .capture_target
+                .as_deref()
+                .and_then(|m| self.route_for(m, false))
+                .and_then(|(_, r)| r.user_volume()),
+            output_muted: self
+                .real_output()
+                .and_then(|o| self.route_for(&o, true))
+                .is_some_and(|(_, r)| r.mute),
+            panic: self.panic,
         }
     }
 
@@ -1304,6 +1501,10 @@ impl Engine {
             skip_events: self.stats.skip_events.load(Relaxed),
             last_skip_cb: self.stats.last_skip_cb.load(Relaxed),
             last_drop_cycle: self.stats.last_drop_cycle.load(Relaxed),
+            clipped_hops: self
+                .worker
+                .as_ref()
+                .map_or(0, |w| w.shared.clipped_hops.load(Relaxed)),
         }
     }
 

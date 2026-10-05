@@ -32,6 +32,7 @@ fn main() -> anyhow::Result<()> {
         strength: Strength::High,
         studio: Preset::Natural.params(),
         pause_mute: true,
+        mute: false,
     };
     let mut reference: Option<Vec<f32>> = None;
     let mut thresholds = Thresholds::default();

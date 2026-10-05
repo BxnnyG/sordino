@@ -34,6 +34,8 @@ export interface Settings {
   run_in_background: boolean;
   show_all_devices: boolean;
   auto_eq: boolean;
+  muted: boolean;
+  mic_level: { volume: number | null; avoid_clipping: boolean };
   noise: { enabled: boolean; strength: Strength; pause_mute: boolean };
   echo: { enabled: boolean };
   studio: { preset: Preset; custom: StudioParams };
@@ -88,9 +90,13 @@ export interface SordinoState {
   ab_original: boolean;
   echo_available: boolean;
   presets: Record<string, StudioParams>;
+  mic_volume: number | null;
+  output_muted: boolean;
+  panic: boolean;
 }
 
 export interface Diag {
+  clipped_hops?: number;
   out_underruns: number;
   out_skipped: number;
   in_dropped: number;

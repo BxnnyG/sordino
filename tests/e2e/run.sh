@@ -113,6 +113,29 @@ PY
 d_under=$(jget "['diag']['out_underruns']"); d_skip=$(jget "['diag']['out_skipped']"); d_drop=$(jget "['diag']['in_dropped']")
 [ "$d_under" -le 2 ] && [ "$d_skip" = 0 ] && [ "$d_drop" = 0 ] && ok "glitch counters are clean" || fail "glitch counters (underruns=$d_under skipped=$d_skip dropped=$d_drop)"
 
+echo "== mute and panic"
+rms_of() {
+  pw-record --target sordino_mic --format f32 --rate 48000 --channels 1 "$T/m.wav" & local r=$!
+  sleep 3; kill -INT $r; wait $r 2>/dev/null
+  python3 - "$T/m.wav" <<'PY'
+import sys, numpy as np
+b = open(sys.argv[1], "rb").read(); i = b.index(b"data") + 8
+x = np.frombuffer(b[i:], dtype="<f4"); x = x[len(x)//3:]
+print(round(float(20 * np.log10(np.sqrt((x**2).mean()) + 1e-9)), 1))
+PY
+}
+"$SORDINOCTL" mute on >/dev/null
+lvl=$(rms_of); [ "${lvl%.*}" -lt -80 ] && ok "mute: Sordino Mic is silent ($lvl dBFS)" || fail "mute: Sordino Mic is silent ($lvl dBFS)"
+"$SORDINOCTL" mute off >/dev/null
+lvl=$(rms_of); [ "${lvl%.*}" -gt -30 ] && ok "unmute: the voice is back ($lvl dBFS)" || fail "unmute: the voice is back ($lvl dBFS)"
+"$SORDINOCTL" panic on >/dev/null
+sleep 1
+check "panic: state says panic and muted" sh -c "'$SORDINOCTL' state | grep -q '\"panic\": true'"
+lvl=$(rms_of); [ "${lvl%.*}" -lt -80 ] && ok "panic: Sordino Mic is silent ($lvl dBFS)" || fail "panic: Sordino Mic is silent ($lvl dBFS)"
+"$SORDINOCTL" panic off >/dev/null
+lvl=$(rms_of); [ "${lvl%.*}" -gt -30 ] && ok "panic off: the voice is back ($lvl dBFS)" || fail "panic off: the voice is back ($lvl dBFS)"
+check "mute survives a restart of the settings file" sh -c "'$SORDINOCTL' mute on >/dev/null && grep -q 'muted = true' '$XDG_CONFIG_HOME/sordino/config.toml' && '$SORDINOCTL' mute off >/dev/null"
+
 echo "== hotplug"
 kill $MIC_PID; wait $MIC_PID 2>/dev/null
 check "status becomes 'waiting for the microphone'" wait_for 10 sh -c "'$SORDINOCTL' status | head -1 | grep -q 'waiting for the microphone'"
