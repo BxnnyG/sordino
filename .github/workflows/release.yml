@@ -141,27 +141,28 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      # Not "dist/": that folder exists in the repository (desktop file, D-Bus service, ...).
       - uses: actions/download-artifact@v8
         with:
-          path: dist
+          path: release-assets
           merge-multiple: true
       - name: SBOM (software bill of materials)
         uses: anchore/sbom-action@v0.24.3
         with:
           path: .
           format: cyclonedx-json
-          output-file: dist/sbom.cdx.json
+          output-file: release-assets/sbom.cdx.json
           upload-artifact: false
 
       - name: Checksums
-        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+        run: cd release-assets && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
       # Signed provenance: anyone can check that the files were built by this workflow from this
       # repository:  gh attestation verify <file> --repo BxnnyG/sordino
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: dist/*
+          subject-path: release-assets/*
       - name: Release notes from CHANGELOG.md
         run: |
           ver=${{ needs.version.outputs.version }}
@@ -186,4 +187,4 @@ jobs:
           ver=${{ needs.version.outputs.version }}
           flag=""
           case "$ver" in 0.*) flag="--prerelease";; esac
-          gh release create "${GITHUB_REF_NAME}" dist/* $flag --title "Sordino $ver" --notes-file notes.md
+          gh release create "${GITHUB_REF_NAME}" release-assets/* $flag --title "Sordino $ver" --notes-file notes.md
