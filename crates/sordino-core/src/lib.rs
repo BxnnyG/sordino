@@ -4,7 +4,8 @@
 //! * [`dsp`]       biquad EQ, gate, de-esser, compressor, limiter
 //! * [`studio`]    "Studio sound" presets and the chain built from them
 //! * [`echo`]      acoustic echo cancellation (WebRTC AEC3, optional feature)
-//! * [`pipeline`]  echo -> denoise -> studio, one hop at a time
+//! * [`speech_gate`] mute between words
+//! * [`pipeline`]  echo -> denoise -> studio -> pause mute, one hop at a time
 //! * [`settings`]  persisted user settings (TOML)
 //! * [`ipc`]       state types exchanged between daemon, CLI and UI
 
@@ -17,6 +18,7 @@ pub mod level;
 pub mod pipeline;
 pub mod profile;
 pub mod settings;
+pub mod speech_gate;
 pub mod studio;
 
 /// All processing runs at 48 kHz mono. PipeWire resamples/downmixes at the edges.

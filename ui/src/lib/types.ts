@@ -34,7 +34,7 @@ export interface Settings {
   run_in_background: boolean;
   show_all_devices: boolean;
   auto_eq: boolean;
-  noise: { enabled: boolean; strength: Strength };
+  noise: { enabled: boolean; strength: Strength; pause_mute: boolean };
   echo: { enabled: boolean };
   studio: { preset: Preset; custom: StudioParams };
   speaker: { enabled: boolean; strength: Strength; output: string | null };

@@ -19,6 +19,8 @@ use crate::studio::{Preset, StudioParams};
 pub struct NoiseSettings {
     pub enabled: bool,
     pub strength: Strength,
+    /// Mute between words, so key clicks in pauses are not heard (see `speech_gate`).
+    pub pause_mute: bool,
 }
 
 impl Default for NoiseSettings {
@@ -26,6 +28,7 @@ impl Default for NoiseSettings {
         NoiseSettings {
             enabled: true,
             strength: Strength::High,
+            pause_mute: true,
         }
     }
 }
@@ -60,6 +63,8 @@ impl SpeakerSettings {
             // Correcting a microphone makes no sense for other people's audio.
             auto_eq: false,
             studio: None,
+            // Other people's apps already decide when they talk.
+            pause_mute: false,
         }
     }
 }
@@ -137,6 +142,7 @@ impl Settings {
             strength: self.noise.strength,
             auto_eq: self.auto_eq,
             studio: self.studio.effective(),
+            pause_mute: self.noise.pause_mute,
         }
     }
 
@@ -339,6 +345,14 @@ mod tests {
         assert!(!s.speaker.enabled);
         let p = s.speaker.pipeline_params();
         assert!(p.noise && !p.echo && p.studio.is_none());
+        assert!(!p.pause_mute);
+    }
+
+    #[test]
+    fn pause_mute_is_on_by_default_and_old_files_get_it() {
+        assert!(Settings::default().pipeline_params().pause_mute);
+        let old: Settings = toml::from_str("[noise]\nstrength = \"medium\"\n").unwrap();
+        assert!(old.noise.pause_mute);
     }
 
     #[test]

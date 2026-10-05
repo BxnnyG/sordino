@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.2
+
+* **Silence between words** (on by default). Sordino Mic is muted while you are not talking, so
+  key clicks in pauses are not heard. It opens on voiced speech (a stable pitch) and holds for
+  200 ms after the last word. No added latency: it analyses the microphone signal ahead of the
+  noise model's own 30 ms delay. Measured on a recording with typing: about 60 % of the clicks
+  between words are gone, voiced speech keeps 99.8 % of its energy. Typing *while* you talk and
+  whispering are limits: the first is still heard, the second is muted too.
+  `sordinoctl pause-mute on|off`.
+* `sordinoctl echo on|off`; `sordinoctl status` shows echo suppression and pause mute.
+* End-to-end test: the private D-Bus session no longer activates an installed Sordino.
+* `process_file` can dump the noise model's per-hop speech estimate (`--lsnr-out`).
+
 ## 0.1.1
 
 * **Automatic microphone correction** ("Fix my microphone's sound", on by default). Sordino

@@ -141,6 +141,17 @@
           onchange={(v) => store.apply({ noise: { strength: strengths[v] } })}
           ticks={strengths.map((x) => t(`strength.${x}`))}
         />
+        <div class="line pause">
+          <div>
+            <span>{t('pause.title')}</span>
+            <small>{t('pause.sub')}</small>
+          </div>
+          <Toggle
+            label={t('pause.title')}
+            checked={s.settings.noise.pause_mute}
+            onchange={(v) => store.apply({ noise: { pause_mute: v } })}
+          />
+        </div>
       {/if}
     </Card>
 
@@ -344,6 +355,12 @@
     display: block;
     color: var(--sub);
     font-size: 12.5px;
+  }
+  .pause {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 13.5px;
   }
   .ab {
     border: 0;

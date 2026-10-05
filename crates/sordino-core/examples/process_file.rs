@@ -2,7 +2,7 @@
 //!
 //! `process_file in.f32 out.f32 [--noise off|light|medium|high|max] [--studio off|natural|clear|warm]
 //!                          [--echo ref.f32] [--thresh min,erb,df] [--autoeq on|off]
-//!                          [--lsnr-out lsnr.f32]`
+//!                          [--pause-mute on|off] [--lsnr-out lsnr.f32]`
 //!
 //! Files are raw mono 48 kHz f32le (convert with `ffmpeg -i in.wav -f f32le -ac 1 -ar 48000 in.f32`).
 //! The output is shifted back by the pipeline latency so it lines up with the input.
@@ -31,6 +31,7 @@ fn main() -> anyhow::Result<()> {
         noise: true,
         strength: Strength::High,
         studio: Preset::Natural.params(),
+        pause_mute: true,
     };
     let mut reference: Option<Vec<f32>> = None;
     let mut thresholds = Thresholds::default();
@@ -57,6 +58,11 @@ fn main() -> anyhow::Result<()> {
                 Some("on") => params.auto_eq = true,
                 Some("off") => params.auto_eq = false,
                 _ => anyhow::bail!("--autoeq on|off"),
+            },
+            "--pause-mute" => match it.next().map(String::as_str) {
+                Some("on") => params.pause_mute = true,
+                Some("off") => params.pause_mute = false,
+                _ => anyhow::bail!("--pause-mute on|off"),
             },
             "--thresh" => {
                 let v: Vec<f32> = it

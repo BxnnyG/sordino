@@ -1,10 +1,12 @@
-//! Echo cancel -> denoise -> studio chain, one hop at a time, with click-free on/off switching.
+//! Echo cancel -> denoise -> studio chain -> pause mute, one hop at a time, with click-free on/off
+//! switching.
 
 use anyhow::Result;
 
 use crate::autoeq::AutoEq;
 use crate::denoise::{Denoiser, Strength, Thresholds};
 use crate::echo::Echo;
+use crate::speech_gate::SpeechGate;
 use crate::studio::{StudioChain, StudioParams};
 use crate::HOP;
 
@@ -17,6 +19,8 @@ pub struct PipelineParams {
     pub auto_eq: bool,
     /// `None` = studio sound off.
     pub studio: Option<StudioParams>,
+    /// Mute between words (see [`crate::speech_gate`]). Only acts while noise suppression runs.
+    pub pause_mute: bool,
 }
 
 impl Default for PipelineParams {
@@ -27,6 +31,7 @@ impl Default for PipelineParams {
             strength: Strength::High,
             auto_eq: true,
             studio: StudioParams::default().into(),
+            pause_mute: true,
         }
     }
 }
@@ -36,6 +41,7 @@ pub struct Pipeline {
     denoiser: Denoiser,
     studio: StudioChain,
     auto_eq: AutoEq,
+    gate: SpeechGate,
     params: PipelineParams,
     /// Current wet/dry mix (0 = dry, 1 = processed) of each stage, ramped over one hop.
     echo_mix: f32,
@@ -80,6 +86,7 @@ impl Pipeline {
             overloaded: false,
             last_lsnr: None,
             auto_eq: AutoEq::new(),
+            gate: SpeechGate::new(),
         })
     }
 
@@ -178,6 +185,12 @@ impl Pipeline {
             self.echo_mix = echo_target;
         }
 
+        // The pause gate looks at the signal *before* the noise model: the model's delay is the
+        // gate's look-ahead (see [`crate::speech_gate`]).
+        if self.params.pause_mute {
+            self.gate.analyze(&self.stage);
+        }
+
         // Stage 1: noise suppression.
         let noise_target = if self.params.noise && !self.overloaded {
             1.0
@@ -224,6 +237,13 @@ impl Pipeline {
             self.studio_mix = studio_target;
         }
 
+        // Stage 3: mute between words. It relies on the noise model's delay, so it only acts
+        // while that stage runs.
+        self.gate.apply(
+            &mut self.stage,
+            self.params.pause_mute && noise_target > 0.0,
+        );
+
         // Never hand NaN/inf to the graph (a single one can poison downstream filters).
         for (o, s) in output.iter_mut().zip(self.stage.iter()) {
             *o = if s.is_finite() { *s } else { 0.0 };
@@ -267,6 +287,7 @@ mod tests {
             strength: Strength::High,
             auto_eq: false,
             studio: None,
+            pause_mute: false,
         }
     }
 
@@ -308,6 +329,18 @@ mod tests {
     }
 
     #[test]
+    fn pause_mute_needs_the_noise_stage() {
+        // Without the noise model's delay the gate has no look-ahead, so it stays out of the way.
+        let mut p = Pipeline::new(PipelineParams {
+            pause_mute: true,
+            ..off()
+        })
+        .unwrap();
+        let x = tone(HOP * 50);
+        assert_eq!(run(&mut p, &x), x);
+    }
+
+    #[test]
     fn echo_flag_without_canceller_is_harmless() {
         let mut p = Pipeline::new(PipelineParams {
             echo: true,
@@ -335,6 +368,7 @@ mod overload_tests {
             strength: Strength::High,
             auto_eq: false,
             studio: None,
+            pause_mute: false,
         })
         .unwrap();
         let x: Vec<f32> = (0..HOP * 40)

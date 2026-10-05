@@ -34,6 +34,7 @@ fn main() -> anyhow::Result<()> {
             PipelineParams {
                 echo: false,
                 auto_eq: false,
+                pause_mute: false,
                 noise: true,
                 strength: Strength::High,
                 studio: None,
@@ -44,6 +45,7 @@ fn main() -> anyhow::Result<()> {
             PipelineParams {
                 echo: false,
                 auto_eq: false,
+                pause_mute: false,
                 noise: true,
                 strength: Strength::High,
                 studio: Some(StudioParams::default()),
@@ -54,6 +56,7 @@ fn main() -> anyhow::Result<()> {
             PipelineParams {
                 echo: false,
                 auto_eq: false,
+                pause_mute: false,
                 noise: false,
                 strength: Strength::High,
                 studio: Some(StudioParams::default()),

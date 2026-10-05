@@ -23,6 +23,8 @@ USAGE: sordinoctl <command>
                               studio sound preset
   default on|off              make Sordino Mic the system default microphone
   autoeq on|off               automatic microphone correction (fixes dull mics)
+  pause-mute on|off           silence between words (mutes typing in pauses)
+  echo on|off                 echo suppression (others hearing themselves from your speakers)
   speaker on|off              clean incoming voices (play your apps into 'Sordino Speaker')
   speaker light|medium|high|max
                               strength for incoming voices
@@ -148,6 +150,22 @@ fn run() -> Result<()> {
                 },
                 s.settings.noise.strength
             );
+            println!(
+                "  silence between words: {}",
+                if s.settings.noise.pause_mute {
+                    "on"
+                } else {
+                    "off"
+                }
+            );
+            println!(
+                "  echo suppression: {}",
+                match (s.echo_available, s.settings.echo.enabled) {
+                    (false, _) => "not available in this build",
+                    (true, true) => "on",
+                    (true, false) => "off",
+                }
+            );
             println!("  studio sound: {:?}", s.settings.studio.preset);
             if s.settings.auto_eq {
                 let g = s.auto_eq_gains;
@@ -269,6 +287,8 @@ fn run() -> Result<()> {
         },
         "default" => c.apply(json!({"set_default": on_off(args.get(1))?}))?,
         "autoeq" => c.apply(json!({"auto_eq": on_off(args.get(1))?}))?,
+        "echo" => c.apply(json!({"echo": {"enabled": on_off(args.get(1))?}}))?,
+        "pause-mute" => c.apply(json!({"noise": {"pause_mute": on_off(args.get(1))?}}))?,
         "speaker" => match args.get(1).map(String::as_str) {
             Some("on") => c.apply(json!({"speaker": {"enabled": true}}))?,
             Some("off") => c.apply(json!({"speaker": {"enabled": false}}))?,

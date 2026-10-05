@@ -11,7 +11,21 @@ if [ -z "${E2E_INNER:-}" ]; then
   export E2E_INNER=1
   export XDG_RUNTIME_DIR=$(mktemp -d)
   chmod 700 "$XDG_RUNTIME_DIR"
-  exec dbus-run-session -- "$0" "$@"
+  # A bus without service directories: an installed Sordino must not be D-Bus-activated into
+  # the test session (it would race the daemon under test and outlive the run).
+  cat > "$XDG_RUNTIME_DIR/bus.conf" <<'CONF'
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+CONF
+  exec dbus-run-session --config-file="$XDG_RUNTIME_DIR/bus.conf" -- "$0" "$@"
 fi
 
 SORDINOD=$(realpath "${SORDINOD:-target/release/sordinod}")
