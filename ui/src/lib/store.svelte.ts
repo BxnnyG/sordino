@@ -1,5 +1,5 @@
-import { api, onDaemon, onLevels, onState } from './api';
-import type { SordinoState, Levels, Patch, Settings } from './types';
+import { api, onDaemon, onLevels, onState, onUpdate } from './api';
+import type { SordinoState, Levels, Patch, Settings, UpdateStatus } from './types';
 
 /** Reactive app state shared by all components (Svelte 5 runes). */
 class Store {
@@ -7,10 +7,13 @@ class Store {
   levels = $state<Levels>({ input_db: -100, output_db: -100 });
   daemonUp = $state(true);
   busy = $state(false);
+  update = $state<UpdateStatus | null>(null);
 
   async init() {
     await onState((s) => (this.state = s));
     await onLevels((l) => (this.levels = l));
+    await onUpdate((u) => (this.update = u));
+    api.updateStatus().then((u) => (this.update = u)).catch(() => {});
     await onDaemon((up) => {
       this.daemonUp = up;
       if (up) this.refresh();

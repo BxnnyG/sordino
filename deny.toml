@@ -41,6 +41,11 @@ allow = [
   "GPL-3.0",
 ]
 # webrtc-audio-processing* (BSD-3-Clause, COPYING file) have no license field: reported as a warning only.
+# Mozilla's CA root list used by the in-app updater's HTTPS client. CDLA-Permissive-2.0 is a
+# permissive data licence (GPL compatible); allowed for this crate only.
+exceptions = [
+  { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+]
 
 
 [bans]

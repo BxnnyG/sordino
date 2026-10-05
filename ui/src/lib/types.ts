@@ -53,6 +53,7 @@ export interface Settings {
   mode: Mode;
   modes: Record<Mode, { noise: NoiseSettings; studio: { preset: Preset; custom: StudioParams }; auto_eq: boolean }>;
   onboarded: boolean;
+  update_check: boolean;
   echo: { enabled: boolean };
   studio: { preset: Preset; custom: StudioParams };
   speaker: { enabled: boolean; strength: Strength; output: string | null; level_voices: boolean };
@@ -139,3 +140,19 @@ export interface Levels {
 
 /** Deep partial used for settings patches. */
 export type Patch<T> = { [K in keyof T]?: T[K] extends object ? Patch<T[K]> : T[K] };
+
+export interface UpdateAvailable {
+  version: string;
+  tag: string;
+  notes: string;
+  url: string;
+  can_install: boolean;
+  reason: string | null;
+}
+
+export interface UpdateStatus {
+  current: string;
+  available: UpdateAvailable | null;
+  error: string | null;
+  checked_at: number | null;
+}

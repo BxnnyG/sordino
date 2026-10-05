@@ -32,3 +32,6 @@ tokio = { version = "1", features = ["macros", "time"] }
 futures-util = "0.3"
 log.workspace = true
 env_logger.workspace = true
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+minisign-verify = "0.2"
+sha2 = "0.10"

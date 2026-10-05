@@ -107,6 +107,13 @@
       <li>{t('onb.apps_3')}</li>
       <li>{t('onb.apps_4')}</li>
     </ol>
+    <div class="row">
+      <div>
+        <span>{t('update.auto')}</span>
+        <small>{t('update.auto_sub')}</small>
+      </div>
+      <Toggle label={t('update.auto')} checked={s.settings.update_check} onchange={(v) => store.apply({ update_check: v })} />
+    </div>
   {/if}
 
   <footer>

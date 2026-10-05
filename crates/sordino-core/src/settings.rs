@@ -298,6 +298,9 @@ pub struct Settings {
     pub modes: ModeStore,
     /// The setup assistant has been completed (or skipped).
     pub onboarded: bool,
+    /// The app asks GitHub once a day whether a new version exists (only that request, no data
+    /// about the user or the system besides what any web request carries).
+    pub update_check: bool,
     pub noise: NoiseSettings,
     pub echo: EchoSettings,
     pub studio: StudioSettings,
@@ -320,6 +323,7 @@ impl Default for Settings {
             mode: Mode::Call,
             modes: ModeStore::default(),
             onboarded: false,
+            update_check: true,
             noise: NoiseSettings::default(),
             echo: EchoSettings::default(),
             studio: StudioSettings::default(),

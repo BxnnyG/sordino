@@ -8,11 +8,12 @@
 mod autostart;
 mod bus;
 mod tray;
+mod update;
 
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
-use tauri::{AppHandle, Manager, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
 use bus::Bus;
 
@@ -22,6 +23,7 @@ pub struct App {
     /// Last state received from the daemon, used by the tray and the close handler.
     pub last: Mutex<Option<Value>>,
     pub tray: Mutex<Option<tray::TrayItems>>,
+    pub update: Mutex<update::Status>,
 }
 
 type Shared<'a> = State<'a, Arc<App>>;
@@ -109,6 +111,109 @@ fn open_repo() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn update_status(app: Shared<'_>) -> update::Status {
+    app.update.lock().unwrap().clone()
+}
+
+/// Ask GitHub now (the "check for updates" button).
+#[tauri::command]
+async fn update_check(handle: AppHandle, app: Shared<'_>) -> Result<update::Status, String> {
+    Ok(run_check(&handle, app.inner()).await)
+}
+
+async fn run_check(handle: &AppHandle, shared: &Arc<App>) -> update::Status {
+    let result = tauri::async_runtime::spawn_blocking(update::check)
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()));
+    let status = {
+        let mut s = shared.update.lock().unwrap();
+        s.current = env!("CARGO_PKG_VERSION").to_string();
+        match result {
+            Ok(a) => {
+                s.available = a;
+                s.error = None;
+                s.checked_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_secs());
+            }
+            Err(e) => s.error = Some(e),
+        }
+        s.clone()
+    };
+    let _ = handle.emit("sordino://update", &status);
+    status
+}
+
+/// Download, verify and install the available update (asks for the password via pkexec).
+#[tauri::command]
+async fn update_install(app: Shared<'_>) -> Result<(), String> {
+    let tag = app
+        .update
+        .lock()
+        .unwrap()
+        .available
+        .as_ref()
+        .filter(|a| a.can_install)
+        .map(|a| a.tag.clone())
+        .ok_or("no installable update")?;
+    tauri::async_runtime::spawn_blocking(move || update::install(&tag))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// After an update: stop the old daemon and start the new app (which starts the new daemon).
+#[tauri::command]
+async fn update_restart(handle: AppHandle, app: Shared<'_>) -> Result<(), String> {
+    let _ = app.bus.call("Quit", &()).await;
+    // Give the single-instance lock a moment to go away before the new process starts.
+    std::process::Command::new("sh")
+        .args(["-c", "sleep 1.5; exec sordino >/dev/null 2>&1"])
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    handle.exit(0);
+    Ok(())
+}
+
+/// Check once shortly after start and then once a day, while the setting allows it.
+fn spawn_update_checker(handle: AppHandle, shared: Arc<App>) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+        loop {
+            let allowed = shared
+                .last
+                .lock()
+                .unwrap()
+                .as_ref()
+                .and_then(|s| s["settings"]["update_check"].as_bool())
+                .unwrap_or(false);
+            if allowed {
+                run_check(&handle, &shared).await;
+            }
+            // Re-evaluate hourly so switching the setting on does not wait a day; check daily.
+            let mut waited = 0;
+            while waited < 24 {
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                waited += 1;
+                let checked_recently = shared.update.lock().unwrap().checked_at.is_some();
+                if !checked_recently
+                    && shared
+                        .last
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .and_then(|s| s["settings"]["update_check"].as_bool())
+                        .unwrap_or(false)
+                {
+                    break;
+                }
+            }
+        }
+    });
+}
+
+#[tauri::command]
 async fn quit_app(app: AppHandle, shared: Shared<'_>) -> Result<(), String> {
     quit_everything(&app, &shared).await;
     Ok(())
@@ -178,6 +283,10 @@ fn main() {
                 bus,
                 last: Mutex::new(None),
                 tray: Mutex::new(None),
+                update: Mutex::new(update::Status {
+                    current: env!("CARGO_PKG_VERSION").to_string(),
+                    ..Default::default()
+                }),
             });
             app.manage(shared.clone());
             // The tray is a convenience: if it cannot be built, Sordino still works without it.
@@ -185,6 +294,7 @@ fn main() {
                 log::warn!("no tray icon: {e}");
             }
             bus::spawn_watcher(app.handle().clone(), shared.clone());
+            spawn_update_checker(app.handle().clone(), shared.clone());
             // Start hidden (autostart) only if a tray can bring the window back.
             if hidden && tray_available(&shared) {
                 if let Some(w) = app.get_webview_window("main") {
@@ -235,6 +345,10 @@ fn main() {
             set_profile,
             set_monitor,
             panic,
+            update_status,
+            update_check,
+            update_install,
+            update_restart,
             set_ab_original,
             set_watching,
             start_daemon,

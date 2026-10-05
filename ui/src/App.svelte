@@ -8,6 +8,7 @@
   import Speaker from './lib/Speaker.svelte';
   import Studio from './lib/Studio.svelte';
   import Onboarding from './lib/Onboarding.svelte';
+  import UpdateBanner from './lib/UpdateBanner.svelte';
   import Toggle from './lib/Toggle.svelte';
   import { api } from './lib/api';
   import { t } from './lib/i18n';
@@ -111,6 +112,8 @@
     {:else if status === 'mic_missing'}
       <div class="banner warn"><strong>{t('status.mic_missing')}</strong><p>{t('error.micmissing')}</p></div>
     {/if}
+
+    <UpdateBanner />
 
     <div class="mutebar">
       <button

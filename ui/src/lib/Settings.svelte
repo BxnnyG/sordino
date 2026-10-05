@@ -54,6 +54,16 @@
     }, 150);
   }
 
+  let checking = $state(false);
+  async function checkNow() {
+    checking = true;
+    try {
+      store.update = await api.updateCheck();
+    } finally {
+      checking = false;
+    }
+  }
+
   let mics = $derived(s.settings.show_all_devices ? [...s.devices, ...s.hidden_devices] : s.devices);
 </script>
 
@@ -143,6 +153,25 @@
     </div>
     <Toggle label={t('settings.notify')} checked={s.settings.notify_muted_talk} onchange={(v) => store.apply({ notify_muted_talk: v })} />
   </div>
+  <h3>{t('update.title')}</h3>
+  <div class="row">
+    <div>
+      <span>{t('update.auto')}</span>
+      <small>{t('update.auto_sub')}</small>
+    </div>
+    <Toggle label={t('update.auto')} checked={s.settings.update_check} onchange={(v) => store.apply({ update_check: v })} />
+  </div>
+  <div class="row">
+    <small>
+      {#if checking}{t('update.checking')}
+      {:else if store.update?.error}{t('update.check_failed')}
+      {:else if store.update?.available}{t('update.available', { v: store.update.available.version })}
+      {:else if store.update?.checked_at}{t('update.latest', { v: s.version })}
+      {:else}{t('settings.version', { v: s.version })}{/if}
+    </small>
+    <button class="again" disabled={checking} onclick={checkNow}>{t('update.check')}</button>
+  </div>
+
   <button
     class="again"
     onclick={() => {

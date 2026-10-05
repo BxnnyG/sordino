@@ -157,6 +157,25 @@ jobs:
       - name: Checksums
         run: cd release-assets && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
+      # The in-app updater only installs releases whose SHA256SUMS carry a valid minisign
+      # signature from the key in packaging/minisign.pub. The secret key lives only in the
+      # repository secret MINISIGN_SECRET_KEY (created with tools/make-signing-key.sh).
+      - name: Sign the checksums
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::warning::MINISIGN_SECRET_KEY is not set: in-app updates will not install this release"
+            exit 0
+          fi
+          sudo apt-get install -y -qq minisign >/dev/null
+          umask 077
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign.key"
+          minisign -S -s "$RUNNER_TEMP/minisign.key" -m release-assets/SHA256SUMS \
+            -x release-assets/SHA256SUMS.minisig -t "sordino ${GITHUB_REF_NAME}"
+          rm -f "$RUNNER_TEMP/minisign.key"
+          minisign -V -p packaging/minisign.pub -m release-assets/SHA256SUMS -x release-assets/SHA256SUMS.minisig
+
       # Signed provenance: anyone can check that the files were built by this workflow from this
       # repository:  gh attestation verify <file> --repo BxnnyG/sordino
       - name: Attest build provenance
@@ -177,8 +196,9 @@ jobs:
           * **Flatpak** (experimental): `flatpak install --user ./bxy-sordino-*.flatpak`
           * **Any distro**: unpack the tarball and run `./install.sh`
 
-          Verify downloads with `sha256sum -c SHA256SUMS` or, for signed provenance,
-          `gh attestation verify <file> --repo BxnnyG/sordino`.
+          Verify downloads with `sha256sum -c SHA256SUMS` (signature:
+          `minisign -V -p minisign.pub -m SHA256SUMS`, key in `packaging/minisign.pub`) or, for
+          signed provenance, `gh attestation verify <file> --repo BxnnyG/sordino`.
           EOF2
       - name: Publish
         env:

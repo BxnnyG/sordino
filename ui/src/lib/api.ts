@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { AutostartStatus, SordinoState, Levels, Patch, Settings } from './types';
+import type { AutostartStatus, SordinoState, Levels, Patch, Settings, UpdateStatus } from './types';
 
 /** Thin wrapper over the Tauri commands, which in turn talk to sordinod over D-Bus. */
 export const api = {
@@ -18,6 +18,10 @@ export const api = {
   startDaemon: () => invoke<void>('start_daemon'),
   quit: () => invoke<void>('quit_app'),
   openRepo: () => invoke<void>('open_repo'),
+  updateStatus: () => invoke<UpdateStatus>('update_status'),
+  updateCheck: () => invoke<UpdateStatus>('update_check'),
+  updateInstall: () => invoke<void>('update_install'),
+  updateRestart: () => invoke<void>('update_restart'),
 };
 
 export function onState(cb: (s: SordinoState) => void) {
@@ -28,4 +32,7 @@ export function onLevels(cb: (l: Levels) => void) {
 }
 export function onDaemon(cb: (up: boolean) => void) {
   return listen<boolean>('sordino://daemon', (e) => cb(e.payload));
+}
+export function onUpdate(cb: (u: UpdateStatus) => void) {
+  return listen<UpdateStatus>('sordino://update', (e) => cb(e.payload));
 }
