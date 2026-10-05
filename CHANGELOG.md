@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1
+
+* **Updates in the app.** Sordino checks GitHub once a day (can be switched off) and shows new
+  versions with their notes. "Update now" downloads the package for your system, checks the
+  release signature (minisign key in `packaging/minisign.pub`) and the checksum, and installs
+  it after asking for your password. Flatpak and tarball installs get the download page.
+* Releases now carry `SHA256SUMS.minisig`.
+* Contains everything from 0.2.0.
+
 ## 0.2.0
 
 * **Modes: Call, Streaming, Recording.** Switch at the top of the window, with

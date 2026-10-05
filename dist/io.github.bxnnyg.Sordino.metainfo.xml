@@ -59,6 +59,11 @@
     <color type="primary" scheme_preference="dark">#0a49c9</color>
   </branding>
   <releases>
+    <release version="0.2.1" date="2026-10-05">
+      <description>
+        <p>Updates from within the app, verified with the project's signature before installing.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-05">
       <description>
         <p>Modes for calls, streaming and recording, steady loudness for your voice and for incoming voices, optional room echo reduction, a warning when you talk while muted, a default headphone volume and a setup assistant.</p>
