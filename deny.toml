@@ -1,0 +1,56 @@
+# cargo-deny configuration: licenses, known vulnerabilities (RustSec), duplicate and unwanted sources.
+[graph]
+all-features = false
+
+[advisories]
+version = 2
+yanked = "deny"
+# Every ignored advisory needs a reason and is re-checked when the blocking dependency moves.
+ignore = [
+  # time: stack exhaustion when parsing hostile format strings. Pinned below 0.3.42 by
+  # tract-linalg 0.21.18; Sordino never parses time strings from untrusted input.
+  { id = "RUSTSEC-2026-0009", reason = "blocked by tract-linalg pin; no untrusted time parsing" },
+  # quick-xml (via plist in tauri-utils): only parses the app's own bundled configuration.
+  { id = "RUSTSEC-2026-0194", reason = "XML is our own build-time config, not untrusted input" },
+  { id = "RUSTSEC-2026-0195", reason = "XML is our own build-time config, not untrusted input" },
+  # Unmaintained, but transitive through tract / Tauri / GTK with no maintained replacement yet.
+  { id = "RUSTSEC-2024-0436", reason = "paste: transitive (tract, tauri), no replacement upstream yet" },
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error: transitive (gtk-rs via tauri)" },
+  { id = "RUSTSEC-2026-0319", reason = "anymap2: transitive (tauri), no replacement upstream yet" },
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# Everything we depend on must be compatible with GPL-3.0-or-later.
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "CC0-1.0",
+  "BSL-1.0",
+  "GPL-3.0-or-later",
+  "GPL-3.0",
+]
+# webrtc-audio-processing* (BSD-3-Clause, COPYING file) have no license field: reported as a warning only.
+
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Path dependencies inside this workspace (and the vendored deep_filter) carry no version.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

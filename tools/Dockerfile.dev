@@ -1,0 +1,7 @@
+# Development container with everything needed to build and test Sordino (Arch Linux).
+FROM archlinux:latest
+RUN pacman -Syu --noconfirm --needed base-devel git rust clang nodejs npm pipewire wireplumber pipewire-audio \
+      webkit2gtk-4.1 gtk3 libayatana-appindicator webrtc-audio-processing xdg-utils python-numpy dbus \
+    && pacman -Scc --noconfirm >/dev/null
+ENV CARGO_HOME=/cargo CARGO_TARGET_DIR=/target
+WORKDIR /w

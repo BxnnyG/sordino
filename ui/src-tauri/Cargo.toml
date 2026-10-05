@@ -1,0 +1,34 @@
+[package]
+name = "sordino-ui"
+description = "Sordino desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+rust-version = "1.80"
+
+[features]
+# Serve the embedded frontend instead of the dev server. `cargo tauri build` enables this itself;
+# since we build with plain cargo it has to be on by default.
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[[bin]]
+name = "sordino"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+sordino-core = { path = "../../crates/sordino-core" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
+serde.workspace = true
+serde_json = "1"
+zbus = "5"
+tokio = { version = "1", features = ["macros", "time"] }
+futures-util = "0.3"
+log.workspace = true
+env_logger.workspace = true

@@ -1,0 +1,39 @@
+[package]
+name = "deep_filter"
+version = "0.5.7-pre"
+authors = ["Hendrik Schröter"]
+edition = "2021"
+description = "DeepFilterNet (libDF), vendored for Sordino with a minimal patch for newer tract"
+repository = "https://github.com/Rikorose/DeepFilterNet"
+license = "MIT/Apache-2.0"
+rust-version = "1.70"
+publish = false
+
+[lib]
+name = "df"
+path = "src/lib.rs"
+
+[features]
+default = ["default-model"]
+# Embed the DeepFilterNet3 model (models/DeepFilterNet3_onnx.tar.gz).
+default-model = []
+# Optional code paths of upstream that Sordino does not use but whose cfgs are kept.
+timings = []
+default-model-ll = []
+capi = []
+
+[dependencies]
+rustfft = "^6.1.0"
+realfft = "^3.1.0"
+itertools = "0.12"
+num-complex = "^0.4"
+log = { version = "0.4", features = ["std"] }
+anyhow = "1"
+ndarray = "0.16"
+rust-ini = "^0.21"
+flate2 = "1.0.24"
+tar = "0.4.38"
+tract-core = "0.21.18"
+tract-onnx = "0.21.18"
+tract-pulse = "0.21.18"
+tract-hir = "0.21.18"

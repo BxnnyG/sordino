@@ -1,0 +1,203 @@
+// Tiny i18n: German and English, picked from the system locale. No technical jargon in the
+// default view (no RNNoise, LADSPA, sink/source).
+
+type Dict = Record<string, string>;
+
+const en: Dict = {
+  'app.title': 'Sordino',
+  'status.off': 'Paused',
+  'status.starting': 'Starting…',
+  'status.running': 'Sordino Mic active',
+  'status.mic_missing': 'Microphone disconnected',
+  'status.no_pipewire': 'Audio system not reachable',
+  'status.error': 'Something went wrong',
+  'status.no_daemon': 'Sordino is not running',
+
+  'mic.title': 'Microphone',
+  'mic.auto': 'System default',
+  'mic.none': 'No microphone found',
+  'mic.show_all': 'Show all devices',
+  'meter.mic': 'Microphone',
+  'meter.out': 'What others hear',
+
+  'noise.title': 'Noise suppression',
+  'noise.sub': 'Removes keyboard, fans and background voices.',
+  'noise.strength': 'Strength',
+  'strength.light': 'Light',
+  'strength.medium': 'Medium',
+  'strength.high': 'High',
+  'strength.max': 'Maximum',
+
+  'echo.title': 'Echo suppression',
+  'echo.sub': 'Only needed with speakers instead of headphones. Experimental: it needs a few seconds to adapt.',
+  'echo.soon': 'Not available',
+
+  'studio.title': 'Studio sound',
+  'studio.sub': 'Makes your voice fuller and clearer.',
+  'preset.off': 'Off',
+  'preset.natural': 'Natural',
+  'preset.clear': 'Clear',
+  'preset.warm': 'Warm',
+  'preset.custom': 'Custom',
+  'studio.advanced': 'Advanced',
+  'adv.lowcut': 'Rumble filter',
+  'adv.warmth': 'Warmth',
+  'adv.presence': 'Presence',
+  'adv.air': 'Brightness',
+  'adv.deess': 'Soften "s" sounds',
+  'adv.compression': 'Even out volume',
+  'adv.gate': 'Mute between words',
+  'adv.limiter': 'Prevent clipping',
+  'adv.off': 'Off',
+
+  'test.title': 'Test',
+  'test.listen': 'Hear myself',
+  'test.listen_sub': 'Use headphones. With speakers you will get feedback.',
+  'test.ab': 'Hold to hear the original',
+  'test.ab_sub': 'Release to hear the processed sound.',
+  'test.ab_original': 'Original',
+  'test.ab_processed': 'Processed',
+
+  'profile.title': 'Your microphone is in studio mode',
+  'profile.body': '{name} is set up for multichannel studio use. For calls, a voice profile works better.',
+  'profile.fix': 'Switch to voice mode',
+  'profile.fixing': 'Switching…',
+
+  'footer.pick': 'In your apps, choose',
+  'footer.latency': 'Added delay about {ms} ms',
+  'footer.copy': 'Copy name',
+  'footer.copied': 'Copied',
+  'footer.credit': 'Sordino by BxnnyG',
+  'footer.license': 'Free software (GPL-3.0)',
+
+  'settings.title': 'Settings',
+  'settings.enabled': 'Sordino is on',
+  'settings.autostart': 'Open Sordino at login',
+  'settings.autostart_sub': 'Starts hidden in the tray.',
+  'settings.daemon_autostart': 'Keep Sordino Mic ready at login',
+  'settings.daemon_autostart_sub': 'Starts the background service so other apps can use Sordino Mic right away, even if this window was never opened.',
+  'settings.flatpak_autostart_sub': 'Starts Sordino in the background at login.',
+  'settings.defaults': 'Default devices',
+  'settings.default_mic': 'Microphone',
+  'settings.default_out': 'Headphones / speakers',
+  'settings.default_hint': 'What the whole system uses unless an app picks something else.',
+  'settings.sordino_mic': 'Sordino Mic (recommended)',
+  'settings.startup': 'Startup',
+  'settings.behaviour': 'Behaviour',
+  'settings.background': 'Keep running in the background when closed',
+  'settings.version': 'Version {v}',
+  'settings.quit': 'Quit Sordino completely',
+  'settings.close': 'Done',
+
+  'error.title': 'Details',
+  'error.retry': 'Sordino retries automatically.',
+  'error.nodaemon': 'The Sordino background service is not running.',
+  'error.start': 'Start Sordino',
+  'error.nopw': 'Sordino cannot reach the audio system (PipeWire). Is it running?',
+  'error.micmissing': 'Plug your microphone back in. Sordino continues automatically.',
+};
+
+const de: Dict = {
+  'app.title': 'Sordino',
+  'status.off': 'Pausiert',
+  'status.starting': 'Startet…',
+  'status.running': 'Sordino Mic aktiv',
+  'status.mic_missing': 'Mikrofon getrennt',
+  'status.no_pipewire': 'Audiosystem nicht erreichbar',
+  'status.error': 'Etwas ist schiefgelaufen',
+  'status.no_daemon': 'Sordino läuft nicht',
+
+  'mic.title': 'Mikrofon',
+  'mic.auto': 'Systemstandard',
+  'mic.none': 'Kein Mikrofon gefunden',
+  'mic.show_all': 'Alle Geräte anzeigen',
+  'meter.mic': 'Mikrofon',
+  'meter.out': 'Was die anderen hören',
+
+  'noise.title': 'Rauschunterdrückung',
+  'noise.sub': 'Entfernt Tastatur, Lüfter und Stimmen im Hintergrund.',
+  'noise.strength': 'Stärke',
+  'strength.light': 'Leicht',
+  'strength.medium': 'Mittel',
+  'strength.high': 'Hoch',
+  'strength.max': 'Maximal',
+
+  'echo.title': 'Echo-Unterdrückung',
+  'echo.sub': 'Nur nötig, wenn du Lautsprecher statt Kopfhörer nutzt. Experimentell: braucht ein paar Sekunden, um sich einzustellen.',
+  'echo.soon': 'Nicht verfügbar',
+
+  'studio.title': 'Studio-Sound',
+  'studio.sub': 'Macht deine Stimme voller und klarer.',
+  'preset.off': 'Aus',
+  'preset.natural': 'Natürlich',
+  'preset.clear': 'Klar',
+  'preset.warm': 'Warm',
+  'preset.custom': 'Eigene',
+  'studio.advanced': 'Erweitert',
+  'adv.lowcut': 'Rumpelfilter',
+  'adv.warmth': 'Wärme',
+  'adv.presence': 'Präsenz',
+  'adv.air': 'Brillanz',
+  'adv.deess': '„S“-Laute abschwächen',
+  'adv.compression': 'Lautstärke angleichen',
+  'adv.gate': 'Zwischen Wörtern stummschalten',
+  'adv.limiter': 'Übersteuern verhindern',
+  'adv.off': 'Aus',
+
+  'test.title': 'Test',
+  'test.listen': 'Mich selbst hören',
+  'test.listen_sub': 'Mit Kopfhörern nutzen. Mit Lautsprechern gibt es Rückkopplung.',
+  'test.ab': 'Halten für das Original',
+  'test.ab_sub': 'Loslassen schaltet auf den bearbeiteten Ton.',
+  'test.ab_original': 'Original',
+  'test.ab_processed': 'Bearbeitet',
+
+  'profile.title': 'Dein Mikrofon läuft im Studio-Modus',
+  'profile.body': '{name} ist für Mehrkanal-Studiobetrieb eingestellt. Für Calls funktioniert ein Sprach-Profil besser.',
+  'profile.fix': 'Auf Sprache umstellen',
+  'profile.fixing': 'Stelle um…',
+
+  'footer.pick': 'In deinen Apps wählen',
+  'footer.latency': 'Zusätzliche Verzögerung ca. {ms} ms',
+  'footer.copy': 'Namen kopieren',
+  'footer.copied': 'Kopiert',
+  'footer.credit': 'Sordino von BxnnyG',
+  'footer.license': 'Freie Software (GPL-3.0)',
+
+  'settings.title': 'Einstellungen',
+  'settings.enabled': 'Sordino ist an',
+  'settings.autostart': 'Sordino beim Anmelden öffnen',
+  'settings.autostart_sub': 'Startet versteckt im Tray.',
+  'settings.daemon_autostart': 'Sordino Mic beim Anmelden bereithalten',
+  'settings.daemon_autostart_sub': 'Startet den Hintergrunddienst, damit andere Apps Sordino Mic sofort nutzen können, auch wenn dieses Fenster nie geöffnet wurde.',
+  'settings.flatpak_autostart_sub': 'Startet Sordino beim Anmelden im Hintergrund.',
+  'settings.defaults': 'Standardgeräte',
+  'settings.default_mic': 'Mikrofon',
+  'settings.default_out': 'Kopfhörer / Lautsprecher',
+  'settings.default_hint': 'Das nutzt das ganze System, solange eine App nichts anderes wählt.',
+  'settings.sordino_mic': 'Sordino Mic (empfohlen)',
+  'settings.startup': 'Start',
+  'settings.behaviour': 'Verhalten',
+  'settings.background': 'Beim Schließen im Hintergrund weiterlaufen',
+  'settings.version': 'Version {v}',
+  'settings.quit': 'Sordino komplett beenden',
+  'settings.close': 'Fertig',
+
+  'error.title': 'Details',
+  'error.retry': 'Sordino versucht es automatisch erneut.',
+  'error.nodaemon': 'Der Sordino-Hintergrunddienst läuft nicht.',
+  'error.start': 'Sordino starten',
+  'error.nopw': 'Sordino erreicht das Audiosystem (PipeWire) nicht. Läuft es?',
+  'error.micmissing': 'Steck dein Mikrofon wieder ein. Sordino macht automatisch weiter.',
+};
+
+const lang = (typeof navigator !== 'undefined' ? navigator.language : 'en').toLowerCase().startsWith('de') ? 'de' : 'en';
+const dict = lang === 'de' ? de : en;
+
+export function t(key: string, vars?: Record<string, string | number>): string {
+  let s = dict[key] ?? en[key] ?? key;
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
+  return s;
+}
+
+export const language = lang;
