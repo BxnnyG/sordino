@@ -139,6 +139,8 @@ pub struct WorkerShared {
     pub overload_hops: AtomicU64,
     /// Hops in which the microphone signal reached full scale.
     pub clipped_hops: AtomicU64,
+    /// Voiced speech on the microphone right now.
+    pub speaking: AtomicBool,
 }
 
 pub enum WorkerHealth {
@@ -169,6 +171,7 @@ impl Worker {
             overload_events: AtomicU32::new(0),
             overload_hops: AtomicU64::new(0),
             clipped_hops: AtomicU64::new(0),
+            speaking: AtomicBool::new(false),
         });
         let s = shared.clone();
         let handle = thread::Builder::new()
@@ -369,6 +372,9 @@ fn worker_loop(
                     }
                 }
                 shared.meter.update(peak_db(&dry), peak_db(&wet));
+                shared
+                    .speaking
+                    .store(pipeline.speaking(), Ordering::Relaxed);
                 hops_done += 1;
                 if hops_done % 50 == 0 {
                     if let Ok(mut g) = shared.auto_eq_gains.try_lock() {

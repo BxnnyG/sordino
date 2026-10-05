@@ -2,7 +2,9 @@
 //!
 //! `process_file in.f32 out.f32 [--noise off|light|medium|high|max] [--studio off|natural|clear|warm]
 //!                          [--echo ref.f32] [--thresh min,erb,df] [--autoeq on|off]
-//!                          [--pause-mute on|off] [--lsnr-out lsnr.f32]`
+//!                          [--pause-mute on|off] [--agc on|off]
+//!                          [--dereverb off|small|medium|large]
+//!                          [--lsnr-out lsnr.f32]`
 //!
 //! Files are raw mono 48 kHz f32le (convert with `ffmpeg -i in.wav -f f32le -ac 1 -ar 48000 in.f32`).
 //! The output is shifted back by the pipeline latency so it lines up with the input.
@@ -33,6 +35,8 @@ fn main() -> anyhow::Result<()> {
         studio: Preset::Natural.params(),
         pause_mute: true,
         mute: false,
+        agc: true,
+        dereverb: None,
     };
     let mut reference: Option<Vec<f32>> = None;
     let mut thresholds = Thresholds::default();
@@ -59,6 +63,21 @@ fn main() -> anyhow::Result<()> {
                 Some("on") => params.auto_eq = true,
                 Some("off") => params.auto_eq = false,
                 _ => anyhow::bail!("--autoeq on|off"),
+            },
+            "--dereverb" => match it.next().map(String::as_str) {
+                Some("off") => params.dereverb = None,
+                Some(r) => {
+                    params.dereverb = Some(
+                        sordino_core::dereverb::RoomSize::parse(r)
+                            .ok_or_else(|| anyhow::anyhow!("--dereverb off|small|medium|large"))?,
+                    )
+                }
+                None => anyhow::bail!("--dereverb off|small|medium|large"),
+            },
+            "--agc" => match it.next().map(String::as_str) {
+                Some("on") => params.agc = true,
+                Some("off") => params.agc = false,
+                _ => anyhow::bail!("--agc on|off"),
             },
             "--pause-mute" => match it.next().map(String::as_str) {
                 Some("on") => params.pause_mute = true,

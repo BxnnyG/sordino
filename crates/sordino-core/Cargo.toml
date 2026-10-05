@@ -27,6 +27,7 @@ ndarray = "0.16"
 webrtc-audio-processing = { version = "2.1", optional = true }
 webrtc-audio-processing-config = { version = "2.1", optional = true }
 deep_filter = { path = "../../third_party/deep_filter" }
+realfft = "3.1"
 
 
 [dev-dependencies]

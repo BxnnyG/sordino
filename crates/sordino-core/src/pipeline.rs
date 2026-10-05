@@ -3,8 +3,10 @@
 
 use anyhow::Result;
 
+use crate::agc::Agc;
 use crate::autoeq::AutoEq;
 use crate::denoise::{Denoiser, Strength, Thresholds};
+use crate::dereverb::{Dereverb, RoomSize};
 use crate::echo::Echo;
 use crate::speech_gate::SpeechGate;
 use crate::studio::{StudioChain, StudioParams};
@@ -23,6 +25,10 @@ pub struct PipelineParams {
     pub pause_mute: bool,
     /// Send silence (mute button). Fades over one hop.
     pub mute: bool,
+    /// Automatic level (see [`crate::agc`]). Learns only while the noise model runs.
+    pub agc: bool,
+    /// Room echo reduction for a room of this size (see [`crate::dereverb`]); `None` = off.
+    pub dereverb: Option<RoomSize>,
 }
 
 impl Default for PipelineParams {
@@ -35,6 +41,8 @@ impl Default for PipelineParams {
             studio: StudioParams::default().into(),
             pause_mute: true,
             mute: false,
+            agc: true,
+            dereverb: None,
         }
     }
 }
@@ -45,6 +53,8 @@ pub struct Pipeline {
     studio: StudioChain,
     auto_eq: AutoEq,
     gate: SpeechGate,
+    agc: Agc,
+    dereverb: Dereverb,
     params: PipelineParams,
     /// Current wet/dry mix (0 = dry, 1 = processed) of each stage, ramped over one hop.
     echo_mix: f32,
@@ -93,6 +103,8 @@ impl Pipeline {
             last_lsnr: None,
             auto_eq: AutoEq::new(),
             gate: SpeechGate::new(),
+            agc: Agc::new(),
+            dereverb: Dereverb::new(params.dereverb.unwrap_or_default()),
         })
     }
 
@@ -116,6 +128,17 @@ impl Pipeline {
         self.auto_eq.debug()
     }
 
+    /// Current automatic level gain in dB.
+    pub fn agc_gain_db(&self) -> f32 {
+        self.agc.gain_db()
+    }
+
+    /// Voiced speech is coming in (from the pause gate's analysis; only tracked while pause mute
+    /// or mute is on).
+    pub fn speaking(&self) -> bool {
+        self.gate.is_open()
+    }
+
     /// The noise model's local SNR estimate (dB) of the last processed hop.
     pub fn last_lsnr(&self) -> Option<f32> {
         self.last_lsnr
@@ -132,6 +155,12 @@ impl Pipeline {
     }
 
     pub fn set_params(&mut self, p: PipelineParams) {
+        if let Some(room) = p.dereverb {
+            if self.params.dereverb.is_none() {
+                self.dereverb.reset();
+            }
+            self.dereverb.set_room(room);
+        }
         if p.strength != self.params.strength {
             self.denoiser.set_strength(p.strength);
         }
@@ -157,7 +186,12 @@ impl Pipeline {
         } else {
             0
         };
-        noise + studio
+        let dereverb = if self.params.dereverb.is_some() {
+            Dereverb::latency()
+        } else {
+            0
+        };
+        noise + dereverb + studio
     }
 
     /// Process one hop. `reference` is what is currently being played (for the echo canceller);
@@ -192,8 +226,9 @@ impl Pipeline {
         }
 
         // The pause gate looks at the signal *before* the noise model: the model's delay is the
-        // gate's look-ahead (see [`crate::speech_gate`]).
-        if self.params.pause_mute {
+        // gate's look-ahead (see [`crate::speech_gate`]). While muted it keeps listening so the
+        // user can be told they are talking into a muted microphone.
+        if self.params.pause_mute || self.params.mute {
             self.gate.analyze(&self.stage);
         }
 
@@ -219,10 +254,23 @@ impl Pipeline {
 
         self.last_lsnr = lsnr;
 
+        // Stage 1a: room echo reduction, on the denoised signal.
+        if self.params.dereverb.is_some() {
+            self.dereverb.process(&mut self.stage);
+        }
+
         // Stage 1b: automatic microphone correction. It learns only while the noise model runs
         // (it needs the model's speech/noise decision) and keeps its last correction otherwise.
         if self.params.auto_eq {
             self.auto_eq.process(&mut self.stage, lsnr);
+        }
+
+        // Stage 1c: automatic level, learning on what the noise model rates as speech.
+        if self.params.agc {
+            self.agc
+                .process(&mut self.stage, lsnr.is_some_and(|l| l > 10.0));
+        } else {
+            self.agc.bypass(&mut self.stage);
         }
 
         // Stage 2: studio chain.
@@ -307,6 +355,8 @@ mod tests {
             studio: None,
             pause_mute: false,
             mute: false,
+            agc: false,
+            dereverb: None,
         }
     }
 
@@ -408,6 +458,8 @@ mod overload_tests {
             studio: None,
             pause_mute: false,
             mute: false,
+            agc: false,
+            dereverb: None,
         })
         .unwrap();
         let x: Vec<f32> = (0..HOP * 40)

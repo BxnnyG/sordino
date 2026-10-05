@@ -27,6 +27,17 @@ export interface StudioParams {
   limiter: boolean;
 }
 
+export type Mode = 'call' | 'streaming' | 'recording';
+export type RoomSize = 'small' | 'medium' | 'large';
+
+export interface NoiseSettings {
+  enabled: boolean;
+  strength: Strength;
+  pause_mute: boolean;
+  auto_level: boolean;
+  dereverb: RoomSize | null;
+}
+
 export interface Settings {
   enabled: boolean;
   mic: string | null;
@@ -36,10 +47,15 @@ export interface Settings {
   auto_eq: boolean;
   muted: boolean;
   mic_level: { volume: number | null; avoid_clipping: boolean };
-  noise: { enabled: boolean; strength: Strength; pause_mute: boolean };
+  noise: NoiseSettings;
+  output_level: { volume: number | null };
+  notify_muted_talk: boolean;
+  mode: Mode;
+  modes: Record<Mode, { noise: NoiseSettings; studio: { preset: Preset; custom: StudioParams }; auto_eq: boolean }>;
+  onboarded: boolean;
   echo: { enabled: boolean };
   studio: { preset: Preset; custom: StudioParams };
-  speaker: { enabled: boolean; strength: Strength; output: string | null };
+  speaker: { enabled: boolean; strength: Strength; output: string | null; level_voices: boolean };
 }
 
 export interface ProfileInfo {
@@ -91,6 +107,8 @@ export interface SordinoState {
   echo_available: boolean;
   presets: Record<string, StudioParams>;
   mic_volume: number | null;
+  output_volume: number | null;
+  talking_while_muted: boolean;
   output_muted: boolean;
   panic: boolean;
 }

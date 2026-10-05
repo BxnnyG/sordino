@@ -31,6 +31,13 @@
         onchange={(v) => store.apply({ speaker: { strength: strengths[v] } })}
         ticks={strengths.map((x) => t(`strength.${x}`))}
       />
+      <div class="lv">
+        <div>
+          <span>{t('speaker.level')}</span>
+          <small>{t('speaker.level_sub')}</small>
+        </div>
+        <Toggle label={t('speaker.level')} checked={sp.level_voices} onchange={(v) => store.apply({ speaker: { level_voices: v } })} />
+      </div>
       <label class="pick">
         <span>{t('speaker.plays_to')}</span>
         <select value={sp.output ?? ''} onchange={(e) => store.apply({ speaker: { output: e.currentTarget.value || null } })}>
@@ -96,5 +103,17 @@
     color: var(--text);
     font-weight: 500;
     cursor: pointer;
+  }
+  .lv {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    font-size: 13.5px;
+  }
+  .lv small {
+    display: block;
+    color: var(--sub);
+    font-size: 12.5px;
   }
 </style>

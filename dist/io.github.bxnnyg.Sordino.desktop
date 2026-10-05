@@ -11,7 +11,7 @@ Terminal=false
 Categories=AudioVideo;Audio;
 Keywords=microphone;noise;krisp;rnnoise;pipewire;mikrofon;rauschen;
 StartupWMClass=sordino
-Actions=mute;panic;
+Actions=mute;panic;mode-call;mode-streaming;mode-recording;
 
 [Desktop Action mute]
 Name=Mute microphone (toggle)
@@ -22,3 +22,18 @@ Exec=sordinoctl mute
 Name=Mute everything: microphone and headphones (toggle)
 Name[de]=Alles stumm: Mikro und Kopfhörer (umschalten)
 Exec=sordinoctl panic
+
+[Desktop Action mode-call]
+Name=Mode: Call
+Name[de]=Modus: Call
+Exec=sordinoctl mode call
+
+[Desktop Action mode-streaming]
+Name=Mode: Streaming
+Name[de]=Modus: Streaming
+Exec=sordinoctl mode streaming
+
+[Desktop Action mode-recording]
+Name=Mode: Recording
+Name[de]=Modus: Aufnahme
+Exec=sordinoctl mode recording

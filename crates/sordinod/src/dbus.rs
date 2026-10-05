@@ -143,6 +143,36 @@ pub fn serve(
     Ok((conn, watching))
 }
 
+/// Show (or replace) a desktop notification. Returns its id; failures are only logged, a desktop
+/// without a notification service must not affect anything else.
+fn notify(conn: &Connection, replaces: u32, summary: &str, body: &str) -> u32 {
+    let hints: std::collections::HashMap<&str, zbus::zvariant::Value> =
+        [("urgency", zbus::zvariant::Value::U8(1))].into();
+    let r = conn.call_method(
+        Some("org.freedesktop.Notifications"),
+        "/org/freedesktop/Notifications",
+        Some("org.freedesktop.Notifications"),
+        "Notify",
+        &(
+            "Sordino",
+            replaces,
+            "io.github.bxnnyg.Sordino",
+            summary,
+            body,
+            Vec::<&str>::new(),
+            hints,
+            5000i32,
+        ),
+    );
+    match r.and_then(|m| m.body().deserialize::<u32>()) {
+        Ok(id) => id,
+        Err(e) => {
+            log::info!("cannot show a notification: {e}");
+            replaces
+        }
+    }
+}
+
 /// Forward engine events as signals until the engine stops.
 pub fn pump(conn: &Connection, shared: &Shared, watching: &AtomicBool, events: Receiver<Event>) {
     fn report(member: &str, r: zbus::Result<()>, ok: &mut bool) {
@@ -157,6 +187,7 @@ pub fn pump(conn: &Connection, shared: &Shared, watching: &AtomicBool, events: R
         }
     }
     let mut ok = true;
+    let mut notify_id = 0u32;
     loop {
         match events.recv_timeout(Duration::from_millis(66)) {
             Ok(Event::StateChanged) => {
@@ -176,6 +207,9 @@ pub fn pump(conn: &Connection, shared: &Shared, watching: &AtomicBool, events: R
                     ),
                     &mut ok,
                 );
+            }
+            Ok(Event::Notify { summary, body }) => {
+                notify_id = notify(conn, notify_id, &summary, &body);
             }
             Ok(Event::Stopped) | Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {

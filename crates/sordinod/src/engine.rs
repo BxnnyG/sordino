@@ -67,6 +67,11 @@ pub enum Cmd {
 
 pub enum Event {
     StateChanged,
+    /// Show a desktop notification.
+    Notify {
+        summary: String,
+        body: String,
+    },
     Stopped,
 }
 
@@ -160,6 +165,13 @@ pub struct Engine {
     /// Panic mute is on; `panic_sink` is the output Sordino muted (and will unmute again).
     panic: bool,
     panic_sink: Option<String>,
+    /// Output node (name, node id) the configured output volume was last applied to.
+    output_level_applied: Option<(String, u32)>,
+    /// Talking into a muted microphone: since when, whether it is reported, last notification.
+    muted_talk_since: Option<Instant>,
+    muted_talk_last: Option<Instant>,
+    talking_while_muted: bool,
+    muted_talk_notified: Option<Instant>,
 
     // health
     status: Status,
@@ -247,6 +259,11 @@ impl Engine {
             last_clip_adjust: None,
             panic: false,
             panic_sink: None,
+            output_level_applied: None,
+            muted_talk_since: None,
+            muted_talk_last: None,
+            talking_while_muted: false,
+            muted_talk_notified: None,
             status: Status::Starting,
             error: None,
             failures: 0,
@@ -595,6 +612,9 @@ impl Engine {
                     if s.mic_level.volume != self.settings.mic_level.volume {
                         self.mic_level_applied = None;
                     }
+                    if s.output_level.volume != self.settings.output_level.volume {
+                        self.output_level_applied = None;
+                    }
                     let unmuted = self.settings.muted && !s.muted;
                     self.settings = s;
                     if unmuted && self.panic {
@@ -604,6 +624,7 @@ impl Engine {
                     self.save_settings();
                     self.reconcile();
                     self.ensure_mic_level();
+                    self.ensure_output_level();
                 }
                 Err(e) => log::warn!("rejected settings patch: {e}"),
             },
@@ -786,6 +807,82 @@ impl Engine {
         if self.set_route(&mic, false, Some(volume), None) {
             log::info!("microphone input level set to {:.0} %", volume * 100.0);
             self.mic_level_applied = Some((mic, node_id));
+        }
+    }
+
+    /// Same as [`Self::ensure_mic_level`] for the real output.
+    fn ensure_output_level(&mut self) {
+        let Some(volume) = self.settings.output_level.sanitized_volume() else {
+            return;
+        };
+        let Some(out) = self.real_output() else {
+            return;
+        };
+        let Some(node_id) = self
+            .sinks
+            .values()
+            .find(|s| s.name == out)
+            .map(|s| s.node_id)
+        else {
+            return;
+        };
+        if self.output_level_applied.as_ref() == Some(&(out.clone(), node_id)) {
+            return;
+        }
+        if self.set_route(&out, true, Some(volume), None) {
+            log::info!("output volume set to {:.0} %", volume * 100.0);
+            self.output_level_applied = Some((out, node_id));
+        }
+    }
+
+    /// Notice voiced speech while Sordino Mic is muted (after one second of talking), keep the
+    /// flag for three seconds after it stops, and notify at most once a minute.
+    fn watch_muted_talk(&mut self) {
+        let speaking = self.settings.muted
+            && self
+                .worker
+                .as_ref()
+                .is_some_and(|w| w.shared.speaking.load(std::sync::atomic::Ordering::Relaxed));
+        let now = Instant::now();
+        if speaking {
+            self.muted_talk_last = Some(now);
+            let since = *self.muted_talk_since.get_or_insert(now);
+            if !self.talking_while_muted && now.duration_since(since) >= Duration::from_secs(1) {
+                self.talking_while_muted = true;
+                self.dirty();
+                let due = self
+                    .muted_talk_notified
+                    .map_or(true, |t| t.elapsed() >= Duration::from_secs(60));
+                if self.settings.notify_muted_talk && due {
+                    self.muted_talk_notified = Some(now);
+                    let de = ["LC_ALL", "LC_MESSAGES", "LANG"]
+                        .iter()
+                        .filter_map(|k| std::env::var(k).ok())
+                        .find(|v| !v.is_empty())
+                        .is_some_and(|v| v.to_lowercase().starts_with("de"));
+                    let (summary, body) = if de {
+                        (
+                            "Du bist stummgeschaltet",
+                            "Du sprichst, aber niemand hört dich.",
+                        )
+                    } else {
+                        ("You are muted", "You are talking, but nobody can hear you.")
+                    };
+                    let _ = self.events.send(Event::Notify {
+                        summary: summary.into(),
+                        body: body.into(),
+                    });
+                }
+            }
+        } else {
+            self.muted_talk_since = None;
+            let quiet = self
+                .muted_talk_last
+                .map_or(true, |t| now.duration_since(t) >= Duration::from_secs(3));
+            if self.talking_while_muted && (quiet || !self.settings.muted) {
+                self.talking_while_muted = false;
+                self.dirty();
+            }
         }
     }
 
@@ -1354,7 +1451,9 @@ impl Engine {
             return self.fail_chain(msg);
         }
         self.ensure_mic_level();
+        self.ensure_output_level();
         self.guard_clipping();
+        self.watch_muted_talk();
         if self
             .stable_since
             .is_some_and(|t| t.elapsed() > Duration::from_secs(30))
@@ -1471,6 +1570,11 @@ impl Engine {
                 .and_then(|o| self.route_for(&o, true))
                 .is_some_and(|(_, r)| r.mute),
             panic: self.panic,
+            output_volume: self
+                .real_output()
+                .and_then(|o| self.route_for(&o, true))
+                .and_then(|(_, r)| r.user_volume()),
+            talking_while_muted: self.talking_while_muted,
         }
     }
 

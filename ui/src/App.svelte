@@ -7,11 +7,12 @@
   import Slider from './lib/Slider.svelte';
   import Speaker from './lib/Speaker.svelte';
   import Studio from './lib/Studio.svelte';
+  import Onboarding from './lib/Onboarding.svelte';
   import Toggle from './lib/Toggle.svelte';
   import { api } from './lib/api';
   import { t } from './lib/i18n';
   import { store } from './lib/store.svelte';
-  import type { Strength } from './lib/types';
+  import type { Mode, RoomSize, Strength } from './lib/types';
 
   let showSettings = $state(false);
   let fixing = $state(false);
@@ -29,6 +30,8 @@
   let micValue = $derived(s?.settings.mic ?? '');
 
   const strengths: Strength[] = ['light', 'medium', 'high', 'max'];
+  const modes: Mode[] = ['call', 'streaming', 'recording'];
+  const rooms: ('off' | RoomSize)[] = ['off', 'small', 'medium', 'large'];
   let strengthIndex = $derived(s ? strengths.indexOf(s.settings.noise.strength) : 2);
 
   async function fixProfile() {
@@ -122,6 +125,15 @@
         {s.panic ? t('panic.off') : t('panic.on')}
       </button>
     </div>
+    <Segmented
+      label={t('mode.title')}
+      options={modes.map((m) => ({ value: m, label: t(`mode.${m}`) }))}
+      value={s.settings.mode}
+      onchange={(m) => store.apply({ mode: m })}
+    />
+    {#if s.talking_while_muted}
+      <div class="banner bad talking"><strong>{t('mute.talking')}</strong></div>
+    {/if}
     {#if s.panic}
       <div class="banner bad"><strong>{t('panic.active')}</strong><p>{t('panic.hint')}</p></div>
     {:else if s.settings.muted}
@@ -199,6 +211,29 @@
         />
         <div class="line pause">
           <div>
+            <span>{t('agc.title')}</span>
+            <small>{t('agc.sub')}</small>
+          </div>
+          <Toggle
+            label={t('agc.title')}
+            checked={s.settings.noise.auto_level}
+            onchange={(v) => store.apply({ noise: { auto_level: v } })}
+          />
+        </div>
+        <div class="room">
+          <div>
+            <span>{t('room.title')}</span>
+            <small>{t('room.sub')}</small>
+          </div>
+          <Segmented
+            label={t('room.title')}
+            options={rooms.map((r) => ({ value: r, label: t(`room.${r}`) }))}
+            value={s.settings.noise.dereverb ?? 'off'}
+            onchange={(r) => store.apply({ noise: { dereverb: r === 'off' ? null : r } })}
+          />
+        </div>
+        <div class="line pause">
+          <div>
             <span>{t('pause.title')}</span>
             <small>{t('pause.sub')}</small>
           </div>
@@ -260,6 +295,9 @@
 
 {#if showSettings && s}
   <Settings onclose={() => (showSettings = false)} />
+{/if}
+{#if s && store.daemonUp && !s.settings.onboarded && !showSettings}
+  <Onboarding />
 {/if}
 
 <style>
@@ -411,6 +449,28 @@
     display: block;
     color: var(--sub);
     font-size: 12.5px;
+  }
+  .room {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: 13.5px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .talking {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.65;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .talking {
+      animation: none;
+    }
   }
   .mutebar {
     display: flex;

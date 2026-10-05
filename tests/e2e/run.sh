@@ -134,6 +134,11 @@ check "panic: state says panic and muted" sh -c "'$SORDINOCTL' state | grep -q '
 lvl=$(rms_of); [ "${lvl%.*}" -lt -80 ] && ok "panic: Sordino Mic is silent ($lvl dBFS)" || fail "panic: Sordino Mic is silent ($lvl dBFS)"
 "$SORDINOCTL" panic off >/dev/null
 lvl=$(rms_of); [ "${lvl%.*}" -gt -30 ] && ok "panic off: the voice is back ($lvl dBFS)" || fail "panic off: the voice is back ($lvl dBFS)"
+check "mode switch brings the mode's own settings" sh -c "'$SORDINOCTL' mode recording >/dev/null && '$SORDINOCTL' state | grep -q '\"strength\": \"medium\"' && '$SORDINOCTL' mode call >/dev/null && '$SORDINOCTL' state | grep -q '\"mode\": \"call\"'"
+"$SORDINOCTL" set '{"noise":{"enabled":true,"dereverb":"medium","auto_level":true}}' >/dev/null
+sleep 3
+lvl=$(rms_of); [ "${lvl%.*}" -gt -60 ] && ok "room echo reduction + automatic level: audio still flows ($lvl dBFS)" || fail "room echo reduction + automatic level: audio still flows ($lvl dBFS)"
+"$SORDINOCTL" set '{"noise":{"enabled":false,"dereverb":null}}' >/dev/null
 check "mute survives a restart of the settings file" sh -c "'$SORDINOCTL' mute on >/dev/null && grep -q 'muted = true' '$XDG_CONFIG_HOME/sordino/config.toml' && '$SORDINOCTL' mute off >/dev/null"
 
 echo "== hotplug"

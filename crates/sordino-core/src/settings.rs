@@ -11,6 +11,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::denoise::Strength;
+use crate::dereverb::RoomSize;
 use crate::pipeline::PipelineParams;
 use crate::studio::{Preset, StudioParams};
 
@@ -21,6 +22,10 @@ pub struct NoiseSettings {
     pub strength: Strength,
     /// Mute between words, so key clicks in pauses are not heard (see `speech_gate`).
     pub pause_mute: bool,
+    /// Keep your voice at a steady loudness (see `agc`).
+    pub auto_level: bool,
+    /// Reduce room echo for a room of this size (see `dereverb`); `None` = off.
+    pub dereverb: Option<RoomSize>,
 }
 
 impl Default for NoiseSettings {
@@ -29,6 +34,8 @@ impl Default for NoiseSettings {
             enabled: true,
             strength: Strength::High,
             pause_mute: true,
+            auto_level: true,
+            dereverb: None,
         }
     }
 }
@@ -42,6 +49,8 @@ pub struct SpeakerSettings {
     pub strength: Strength,
     /// `node.name` of the real output device; `None` follows the system default output.
     pub output: Option<String>,
+    /// Even out quiet and loud voices.
+    pub level_voices: bool,
 }
 
 impl Default for SpeakerSettings {
@@ -50,6 +59,7 @@ impl Default for SpeakerSettings {
             enabled: false,
             strength: Strength::Medium,
             output: None,
+            level_voices: true,
         }
     }
 }
@@ -66,6 +76,8 @@ impl SpeakerSettings {
             // Other people's apps already decide when they talk.
             pause_mute: false,
             mute: false,
+            agc: self.level_voices,
+            dereverb: None,
         }
     }
 }
@@ -94,6 +106,137 @@ impl MicLevelSettings {
     /// Lowest level the clipping guard goes down to on its own.
     pub const GUARD_FLOOR: f32 = 0.4;
 
+    pub fn sanitized_volume(&self) -> Option<f32> {
+        self.volume
+            .filter(|v| v.is_finite())
+            .map(|v| v.clamp(0.0, 1.0))
+    }
+}
+
+/// A situation the user switches between. Each mode remembers its own sound settings.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    /// Calls and meetings: strong cleaning, silence between words, steady level.
+    #[default]
+    Call,
+    /// Streaming: continuous voice (no pause muting), a little more presence.
+    Streaming,
+    /// Recording: lighter cleaning and natural dynamics (no automatic level).
+    Recording,
+}
+
+impl Mode {
+    pub const ALL: [Mode; 3] = [Mode::Call, Mode::Streaming, Mode::Recording];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Mode::Call => "call",
+            Mode::Streaming => "streaming",
+            Mode::Recording => "recording",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Mode> {
+        Mode::ALL.into_iter().find(|m| m.as_str() == s)
+    }
+}
+
+/// The sound settings a mode remembers.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct ModeValues {
+    pub noise: NoiseSettings,
+    pub studio: StudioSettings,
+    pub auto_eq: bool,
+}
+
+impl Default for ModeValues {
+    fn default() -> Self {
+        Mode::Call.defaults()
+    }
+}
+
+impl Mode {
+    /// What a mode starts with before the user changes anything.
+    pub fn defaults(self) -> ModeValues {
+        let studio = |preset| StudioSettings {
+            preset,
+            custom: StudioParams::default(),
+        };
+        match self {
+            Mode::Call => ModeValues {
+                noise: NoiseSettings::default(),
+                studio: studio(Preset::Natural),
+                auto_eq: true,
+            },
+            Mode::Streaming => ModeValues {
+                noise: NoiseSettings {
+                    pause_mute: false,
+                    ..NoiseSettings::default()
+                },
+                studio: studio(Preset::Clear),
+                auto_eq: true,
+            },
+            Mode::Recording => ModeValues {
+                noise: NoiseSettings {
+                    strength: Strength::Medium,
+                    pause_mute: false,
+                    auto_level: false,
+                    ..NoiseSettings::default()
+                },
+                studio: studio(Preset::Natural),
+                auto_eq: true,
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct ModeStore {
+    pub call: ModeValues,
+    pub streaming: ModeValues,
+    pub recording: ModeValues,
+}
+
+impl Default for ModeStore {
+    fn default() -> Self {
+        ModeStore {
+            call: Mode::Call.defaults(),
+            streaming: Mode::Streaming.defaults(),
+            recording: Mode::Recording.defaults(),
+        }
+    }
+}
+
+impl ModeStore {
+    pub fn get(&self, m: Mode) -> &ModeValues {
+        match m {
+            Mode::Call => &self.call,
+            Mode::Streaming => &self.streaming,
+            Mode::Recording => &self.recording,
+        }
+    }
+
+    fn get_mut(&mut self, m: Mode) -> &mut ModeValues {
+        match m {
+            Mode::Call => &mut self.call,
+            Mode::Streaming => &mut self.streaming,
+            Mode::Recording => &mut self.recording,
+        }
+    }
+}
+
+/// Volume of the real output (headphones/speakers), applied whenever it appears.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
+#[serde(default)]
+pub struct OutputLevelSettings {
+    /// 0..1 on the `wpctl` scale; `None` leaves the volume alone.
+    pub volume: Option<f32>,
+}
+
+impl OutputLevelSettings {
     pub fn sanitized_volume(&self) -> Option<f32> {
         self.volume
             .filter(|v| v.is_finite())
@@ -147,6 +290,14 @@ pub struct Settings {
     /// must never turn a muted microphone back on.
     pub muted: bool,
     pub mic_level: MicLevelSettings,
+    pub output_level: OutputLevelSettings,
+    /// Show a desktop notification when you talk while muted.
+    pub notify_muted_talk: bool,
+    /// Current situation; sound changes are remembered for it.
+    pub mode: Mode,
+    pub modes: ModeStore,
+    /// The setup assistant has been completed (or skipped).
+    pub onboarded: bool,
     pub noise: NoiseSettings,
     pub echo: EchoSettings,
     pub studio: StudioSettings,
@@ -164,6 +315,11 @@ impl Default for Settings {
             auto_eq: true,
             muted: false,
             mic_level: MicLevelSettings::default(),
+            output_level: OutputLevelSettings::default(),
+            notify_muted_talk: true,
+            mode: Mode::Call,
+            modes: ModeStore::default(),
+            onboarded: false,
             noise: NoiseSettings::default(),
             echo: EchoSettings::default(),
             studio: StudioSettings::default(),
@@ -182,6 +338,8 @@ impl Settings {
             studio: self.studio.effective(),
             pause_mute: self.noise.pause_mute,
             mute: self.muted,
+            agc: self.noise.auto_level,
+            dereverb: self.noise.dereverb.filter(|_| self.noise.enabled),
         }
     }
 
@@ -191,7 +349,27 @@ impl Settings {
         merge(&mut base, patch);
         let mut s: Settings = serde_json::from_value(base).context("invalid settings patch")?;
         s.studio.custom = s.studio.custom.sanitized();
+        if s.mode != self.mode {
+            // Switching modes brings back what that mode remembers.
+            let v = s.modes.get(s.mode).clone();
+            s.noise = v.noise;
+            s.studio = v.studio;
+            s.auto_eq = v.auto_eq;
+        } else {
+            // Any other change is remembered for the current mode.
+            let m = s.mode;
+            *s.modes.get_mut(m) = s.mode_values();
+        }
         Ok(s)
+    }
+
+    /// The current sound settings as a mode remembers them.
+    pub fn mode_values(&self) -> ModeValues {
+        ModeValues {
+            noise: self.noise.clone(),
+            studio: self.studio.clone(),
+            auto_eq: self.auto_eq,
+        }
     }
 }
 
@@ -385,6 +563,33 @@ mod tests {
         let p = s.speaker.pipeline_params();
         assert!(p.noise && !p.echo && p.studio.is_none());
         assert!(!p.pause_mute);
+    }
+
+    #[test]
+    fn modes_remember_their_own_settings() {
+        let s = Settings::default();
+        assert_eq!(s.mode, Mode::Call);
+        // Change something in "call", then switch to "recording": its defaults come in.
+        let s = s
+            .patched(&serde_json::json!({"noise": {"strength": "max"}}))
+            .unwrap();
+        assert_eq!(s.modes.call.noise.strength, Strength::Max);
+        let r = s
+            .patched(&serde_json::json!({"mode": "recording"}))
+            .unwrap();
+        assert_eq!(r.noise.strength, Strength::Medium);
+        assert!(!r.noise.auto_level && !r.noise.pause_mute);
+        // A change in "recording" stays in "recording"...
+        let r = r
+            .patched(&serde_json::json!({"studio": {"preset": "warm"}}))
+            .unwrap();
+        assert_eq!(r.modes.recording.studio.preset, Preset::Warm);
+        // ...and switching back restores "call" exactly as it was left.
+        let c = r.patched(&serde_json::json!({"mode": "call"})).unwrap();
+        assert_eq!(c.noise.strength, Strength::Max);
+        assert_eq!(c.studio.preset, Preset::Natural);
+        assert!(c.noise.pause_mute);
+        assert_eq!(Mode::parse("streaming"), Some(Mode::Streaming));
     }
 
     #[test]

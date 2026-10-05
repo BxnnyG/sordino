@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0
+
+* **Modes: Call, Streaming, Recording.** Switch at the top of the window, with
+  `sordinoctl mode …` or a desktop shortcut. Each mode remembers its own sound settings (noise
+  suppression, silence between words, steady loudness, room echo, studio sound, mic correction).
+* **Steady loudness** (automatic level): keeps your voice equally loud for the others. Learns
+  only on what the noise model rates as speech, moves at most 3 dB/s up and 6 dB/s down, +-12 dB,
+  peaks stay below -1 dBFS. On the test recording the speech level of the normal sections went
+  from a 7.7 dB spread to 1.8 dB. On by default in Call and Streaming.
+* **Even out voices** on Sordino Speaker: quiet and loud colleagues become equally loud.
+* **Reduce room echo** (off by default): late-reverberation suppression for a small, medium or
+  bare room, +10 ms latency while on. In synthetic rooms PESQ rose by 0.2-0.5 with unchanged
+  intelligibility; in a dry room it costs a little (PESQ 4.53 -> 4.34 on "small"), hence off.
+* **"You are talking, but you are muted"**: banner in the app and a desktop notification (at
+  most once a minute, can be switched off).
+* **Headphone volume** as a default, applied whenever the device appears
+  (`sordinoctl output-level`).
+* **Setup assistant**: microphone and automatic level check, mode, and what to switch off in
+  Discord/Teams/Zoom. Can be started again from the settings.
+
 ## 0.1.3
 
 * **Mute button and panic mute.** "Mute mic" silences Sordino Mic (it stays muted across

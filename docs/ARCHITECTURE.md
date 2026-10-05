@@ -79,6 +79,13 @@ The echo reference is the monitor of the default output device, captured as a se
 | 0.1 | Output side: "Sordino Speaker" cleans incoming voices | done |
 | later | Per-app profiles, onboarding, push-to-talk, model choice | open |
 
+## Microphone chain (0.2)
+
+echo cancel -> DeepFilterNet -> room echo reduction (optional, +10 ms) -> mic correction (auto EQ)
+-> steady loudness (AGC) -> studio chain -> silence between words -> mute. The pause gate and the
+"talking while muted" notice analyse the input before the noise model, whose 30 ms delay is their
+look-ahead. Sordino Speaker runs the same pipeline with noise suppression and AGC only.
+
 ## Investigated and rejected
 
 * **Transient keyboard-click suppressor** (detect fast high-frequency onsets away from voiced

@@ -113,6 +113,12 @@ pub struct State {
     /// lets us read and set it.
     #[serde(default)]
     pub mic_volume: Option<f32>,
+    /// Volume of the real output (0..1, `wpctl` scale), if the device exposes it.
+    #[serde(default)]
+    pub output_volume: Option<f32>,
+    /// You are talking while Sordino Mic is muted.
+    #[serde(default)]
+    pub talking_while_muted: bool,
     /// The real output (headphones/speakers) is muted.
     #[serde(default)]
     pub output_muted: bool,
@@ -193,6 +199,8 @@ mod tests {
             diag: Diag::default(),
             mic_volume: Some(0.8),
             output_muted: false,
+            output_volume: None,
+            talking_while_muted: false,
             panic: false,
         };
         let json = serde_json::to_string(&s).unwrap();

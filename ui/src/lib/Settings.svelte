@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import Slider from './Slider.svelte';
   import Toggle from './Toggle.svelte';
   import { api } from './api';
   import { store } from './store.svelte';
@@ -41,6 +42,18 @@
     await refreshAuto();
   }
 
+  // Output volume slider: shows the device value, sends only the last value while dragging.
+  let outDrag = $state<number | null>(null);
+  let outTimer: ReturnType<typeof setTimeout> | undefined;
+  function setOut(v: number) {
+    outDrag = v;
+    clearTimeout(outTimer);
+    outTimer = setTimeout(() => {
+      store.apply({ output_level: { volume: Math.round(v * 100) / 100 } });
+      setTimeout(() => (outDrag = null), 600);
+    }, 150);
+  }
+
   let mics = $derived(s.settings.show_all_devices ? [...s.devices, ...s.hidden_devices] : s.devices);
 </script>
 
@@ -77,6 +90,19 @@
     </select>
   </label>
 
+  {#if s.output_volume !== null && s.output_volume !== undefined}
+    <Slider
+      label={t('settings.out_level')}
+      min={0}
+      max={1}
+      step={0.01}
+      value={outDrag ?? s.output_volume}
+      format={(v) => `${Math.round(v * 100)} %`}
+      onchange={setOut}
+    />
+    <p class="hint">{t('settings.out_level_hint')}</p>
+  {/if}
+
   <h3>{t('settings.startup')}</h3>
   {#if !auto.flatpak}
     <div class="row">
@@ -109,6 +135,21 @@
     <span>{t('mic.show_all')}</span>
     <Toggle label={t('mic.show_all')} checked={s.settings.show_all_devices} onchange={(v) => store.apply({ show_all_devices: v })} />
   </div>
+
+  <div class="row">
+    <div>
+      <span>{t('settings.notify')}</span>
+      <small>{t('settings.notify_sub')}</small>
+    </div>
+    <Toggle label={t('settings.notify')} checked={s.settings.notify_muted_talk} onchange={(v) => store.apply({ notify_muted_talk: v })} />
+  </div>
+  <button
+    class="again"
+    onclick={() => {
+      store.apply({ onboarded: false });
+      onclose();
+    }}>{t('settings.setup_again')}</button
+  >
 
   <button class="quit" onclick={() => api.quit()}>{t('settings.quit')}</button>
   <p class="ver">{t('settings.version', { v: s.version })}</p>
@@ -229,5 +270,15 @@
     from {
       opacity: 0;
     }
+  }
+  .again {
+    margin-top: 12px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: inherit;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font: inherit;
+    cursor: pointer;
   }
 </style>

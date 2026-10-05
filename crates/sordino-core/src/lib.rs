@@ -4,13 +4,17 @@
 //! * [`dsp`]       biquad EQ, gate, de-esser, compressor, limiter
 //! * [`studio`]    "Studio sound" presets and the chain built from them
 //! * [`echo`]      acoustic echo cancellation (WebRTC AEC3, optional feature)
+//! * [`dereverb`]  room echo (reverb) reduction
+//! * [`agc`]       automatic level (steady speech loudness)
 //! * [`speech_gate`] mute between words
 //! * [`pipeline`]  echo -> denoise -> studio -> pause mute, one hop at a time
 //! * [`settings`]  persisted user settings (TOML)
 //! * [`ipc`]       state types exchanged between daemon, CLI and UI
 
+pub mod agc;
 pub mod autoeq;
 pub mod denoise;
+pub mod dereverb;
 pub mod dsp;
 pub mod echo;
 pub mod ipc;
