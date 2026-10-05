@@ -45,6 +45,8 @@ pub struct Pipeline {
     scratch: [f32; HOP],
     /// The caller is falling behind real time: skip the expensive noise stage until it catches up.
     overloaded: bool,
+    /// The noise model's local SNR estimate of the last hop (None while the model is off).
+    last_lsnr: Option<f32>,
 }
 
 const SILENCE: [f32; HOP] = [0.0; HOP];
@@ -76,6 +78,7 @@ impl Pipeline {
             stage: [0.0; HOP],
             scratch: [0.0; HOP],
             overloaded: false,
+            last_lsnr: None,
             auto_eq: AutoEq::new(),
         })
     }
@@ -98,6 +101,11 @@ impl Pipeline {
     /// Diagnostics of the automatic correction: (profile, per-band SNR, speech hops).
     pub fn auto_eq_debug(&self) -> ([f32; 8], [f32; 8], u32) {
         self.auto_eq.debug()
+    }
+
+    /// The noise model's local SNR estimate (dB) of the last processed hop.
+    pub fn last_lsnr(&self) -> Option<f32> {
+        self.last_lsnr
     }
 
     /// Debug summary of the echo canceller, if there is one.
@@ -189,6 +197,8 @@ impl Pipeline {
             }
             self.noise_mix = noise_target;
         }
+
+        self.last_lsnr = lsnr;
 
         // Stage 1b: automatic microphone correction. It learns only while the noise model runs
         // (it needs the model's speech/noise decision) and keeps its last correction otherwise.

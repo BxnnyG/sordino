@@ -1,7 +1,8 @@
 //! Run the Sordino pipeline offline on a file, for analysis and tuning.
 //!
 //! `process_file in.f32 out.f32 [--noise off|light|medium|high|max] [--studio off|natural|clear|warm]
-//!                          [--echo ref.f32] [--thresh min,erb,df] [--autoeq on|off]`
+//!                          [--echo ref.f32] [--thresh min,erb,df] [--autoeq on|off]
+//!                          [--lsnr-out lsnr.f32]`
 //!
 //! Files are raw mono 48 kHz f32le (convert with `ffmpeg -i in.wav -f f32le -ac 1 -ar 48000 in.f32`).
 //! The output is shifted back by the pipeline latency so it lines up with the input.
@@ -33,6 +34,7 @@ fn main() -> anyhow::Result<()> {
     };
     let mut reference: Option<Vec<f32>> = None;
     let mut thresholds = Thresholds::default();
+    let mut lsnr_out: Option<String> = None;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -70,6 +72,13 @@ fn main() -> anyhow::Result<()> {
                     max_df_db: v[2],
                 };
             }
+            "--lsnr-out" => {
+                lsnr_out = Some(
+                    it.next()
+                        .ok_or_else(|| anyhow::anyhow!("--lsnr-out needs a file"))?
+                        .clone(),
+                )
+            }
             "--echo" => {
                 reference = Some(read(
                     it.next()
@@ -88,6 +97,7 @@ fn main() -> anyhow::Result<()> {
     let mut padded = input.clone();
     padded.resize(hops * HOP + latency.div_ceil(HOP) * HOP, 0.0);
     let mut out = vec![0.0f32; padded.len()];
+    let mut lsnr = Vec::with_capacity(hops);
     for (i, (inp, o)) in padded
         .chunks_exact(HOP)
         .zip(out.chunks_exact_mut(HOP))
@@ -97,6 +107,7 @@ fn main() -> anyhow::Result<()> {
             .as_ref()
             .and_then(|r| r.get(i * HOP..(i + 1) * HOP));
         p.process(inp, r, o)?;
+        lsnr.push(p.last_lsnr().unwrap_or(f32::NAN));
     }
     let aligned = &out[latency..latency + input.len()];
     std::fs::write(
@@ -106,6 +117,15 @@ fn main() -> anyhow::Result<()> {
             .flat_map(|v| v.to_le_bytes())
             .collect::<Vec<u8>>(),
     )?;
+    if let Some(path) = lsnr_out {
+        // One value per hop of *input*, f32le.
+        std::fs::write(
+            path,
+            lsnr.iter()
+                .flat_map(|v| v.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        )?;
+    }
     if params.auto_eq {
         eprintln!(
             "auto EQ gains (dB) per band {:?}: {:?}",

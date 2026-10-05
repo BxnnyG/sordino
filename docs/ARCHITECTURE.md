@@ -89,6 +89,13 @@ The echo reference is the monitor of the default output device, captured as a se
   input system. Code kept on the local branch `experiment/click-suppression`.
 * **Maximum strength against typing**: barely reduces those bursts (-1.3 dB) but cuts quiet
   speech hard. Not recommended as a typing fix.
+* **Speech gate between words** (Discord-style: mute unless stable pitch is detected, hold after
+  the last word). Simulated on the same recording: the model's local SNR alone separates speech
+  from bursts poorly, and thocks ring long enough to look voiced, so the gate needs about 40 ms
+  of stable pitch before it opens. Even then it muted about 60 % of the bursts between words but
+  only about 30 % of their energy (-1.5 dB): the loud thocks sit within about 300 ms of speech,
+  inside the hold time that keeps word endings intact. Without clipped onsets it adds about
+  70 ms latency. Typing while talking is accepted as the remaining limitation.
 
 ## Risks
 
