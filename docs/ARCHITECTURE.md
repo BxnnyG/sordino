@@ -79,6 +79,17 @@ The echo reference is the monitor of the default output device, captured as a se
 | 0.1 | Output side: "Sordino Speaker" cleans incoming voices | done |
 | later | Per-app profiles, onboarding, push-to-talk, model choice | open |
 
+## Investigated and rejected
+
+* **Transient keyboard-click suppressor** (detect fast high-frequency onsets away from voiced
+  speech, 10 ms look-ahead). On a real 45 s recording with typing it removed only about 1 dB of
+  the typing noise that remains after DeepFilterNet, and attenuated some syllable onsets. The
+  remaining bursts are low-frequency key "thocks" the model treats as speech-like. Separating
+  them from consonants needs a model trained on keyboard noise, or key-press timing from the
+  input system. Code kept on the local branch `experiment/click-suppression`.
+* **Maximum strength against typing**: barely reduces those bursts (-1.3 dB) but cuts quiet
+  speech hard. Not recommended as a typing fix.
+
 ## Risks
 
 * Audio real-time bugs (clicks, dropouts, drift) are hard to debug: test on real hardware.
