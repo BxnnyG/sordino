@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 
+use crate::autoeq::AutoEq;
 use crate::denoise::{Denoiser, Strength, Thresholds};
 use crate::echo::Echo;
 use crate::studio::{StudioChain, StudioParams};
@@ -12,6 +13,8 @@ pub struct PipelineParams {
     pub echo: bool,
     pub noise: bool,
     pub strength: Strength,
+    /// Automatic microphone correction (see [`crate::autoeq`]).
+    pub auto_eq: bool,
     /// `None` = studio sound off.
     pub studio: Option<StudioParams>,
 }
@@ -22,6 +25,7 @@ impl Default for PipelineParams {
             echo: false,
             noise: true,
             strength: Strength::High,
+            auto_eq: true,
             studio: StudioParams::default().into(),
         }
     }
@@ -31,6 +35,7 @@ pub struct Pipeline {
     echo: Option<Echo>,
     denoiser: Denoiser,
     studio: StudioChain,
+    auto_eq: AutoEq,
     params: PipelineParams,
     /// Current wet/dry mix (0 = dry, 1 = processed) of each stage, ramped over one hop.
     echo_mix: f32,
@@ -71,6 +76,7 @@ impl Pipeline {
             stage: [0.0; HOP],
             scratch: [0.0; HOP],
             overloaded: false,
+            auto_eq: AutoEq::new(),
         })
     }
 
@@ -82,6 +88,16 @@ impl Pipeline {
 
     pub fn params(&self) -> PipelineParams {
         self.params
+    }
+
+    /// Current automatic correction per band (dB), see [`crate::autoeq::BANDS`].
+    pub fn auto_eq_gains(&self) -> [f32; 8] {
+        self.auto_eq.gains()
+    }
+
+    /// Diagnostics of the automatic correction: (profile, per-band SNR, speech hops).
+    pub fn auto_eq_debug(&self) -> ([f32; 8], [f32; 8], u32) {
+        self.auto_eq.debug()
     }
 
     /// Debug summary of the echo canceller, if there is one.
@@ -160,12 +176,24 @@ impl Pipeline {
         } else {
             0.0
         };
+        let mut lsnr = None;
         if self.noise_mix > 0.0 || noise_target > 0.0 {
             match self.denoiser.process_hop(&self.stage, &mut self.scratch) {
-                Ok(_) => crossfade(&mut self.stage, &self.scratch, self.noise_mix, noise_target),
+                Ok(l) => {
+                    crossfade(&mut self.stage, &self.scratch, self.noise_mix, noise_target);
+                    if noise_target > 0.0 {
+                        lsnr = Some(l);
+                    }
+                }
                 Err(e) => result = Err(e),
             }
             self.noise_mix = noise_target;
+        }
+
+        // Stage 1b: automatic microphone correction. It learns only while the noise model runs
+        // (it needs the model's speech/noise decision) and keeps its last correction otherwise.
+        if self.params.auto_eq {
+            self.auto_eq.process(&mut self.stage, lsnr);
         }
 
         // Stage 2: studio chain.
@@ -227,6 +255,7 @@ mod tests {
             echo: false,
             noise: false,
             strength: Strength::High,
+            auto_eq: false,
             studio: None,
         }
     }
@@ -294,6 +323,7 @@ mod overload_tests {
             echo: false,
             noise: true,
             strength: Strength::High,
+            auto_eq: false,
             studio: None,
         })
         .unwrap();

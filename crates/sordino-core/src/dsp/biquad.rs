@@ -9,6 +9,8 @@ pub enum FilterKind {
     LowShelf,
     HighShelf,
     Peaking,
+    /// Band pass with 0 dB gain at the centre frequency.
+    BandPass,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,6 +57,7 @@ impl Coeffs {
                 -2.0 * cos,
                 1.0 - alpha,
             ),
+            FilterKind::BandPass => (alpha, 0.0, -alpha, 1.0 + alpha, -2.0 * cos, 1.0 - alpha),
             FilterKind::Peaking => (
                 1.0 + alpha * a,
                 -2.0 * cos,
@@ -191,6 +194,14 @@ mod tests {
         let p = Coeffs::new(FilterKind::Peaking, 3000.0, 1.0, 4.0, FS);
         assert!((p.response_db(3000.0, FS) - 4.0).abs() < 0.05);
         assert!(p.response_db(100.0, FS).abs() < 0.3);
+    }
+
+    #[test]
+    fn bandpass_peaks_at_centre() {
+        let c = Coeffs::new(FilterKind::BandPass, 1000.0, 1.41, 0.0, FS);
+        assert!(c.response_db(1000.0, FS).abs() < 0.05);
+        assert!(c.response_db(100.0, FS) < -15.0);
+        assert!(c.response_db(10000.0, FS) < -15.0);
     }
 
     #[test]

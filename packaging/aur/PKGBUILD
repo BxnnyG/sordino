@@ -1,6 +1,6 @@
 # Maintainer: BxnnyG (https://github.com/BxnnyG)
 pkgname=bxy-sordino
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc='Virtual microphone with AI noise suppression (DeepFilterNet) and echo suppression for PipeWire'
 arch=('x86_64')

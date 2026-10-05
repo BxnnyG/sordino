@@ -34,11 +34,28 @@
     store.apply({ studio: { preset: 'custom', custom: { ...base, ...patch } } });
   }
 
+  const fmt = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(0)} dB`;
+  let eqText = $derived.by(() => {
+    const g = s.auto_eq_gains ?? [];
+    if (g.length < 8) return t('autoeq.learning');
+    const hi = (g[5] + g[6] + g[7]) / 3;
+    if (g.every((x) => Math.abs(x) < 0.5)) return s.status === 'running' ? t('autoeq.learning') : '';
+    if (Math.abs(g[0]) < 0.5 && Math.abs(g[4]) < 0.5 && Math.abs(hi) < 0.5) return t('autoeq.flat');
+    return t('autoeq.now', { lo: fmt(g[0]), mid: fmt(g[4]), hi: fmt(hi) });
+  });
+
   const db = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`;
   const pct = (v: number) => (v <= 0 ? t('adv.off') : `${Math.round(v * 100)} %`);
 </script>
 
 <Card title={t('studio.title')} sub={t('studio.sub')}>
+  <div class="line autoeq">
+    <div>
+      <span>{t('autoeq.title')}</span>
+      <small>{s.settings.auto_eq ? eqText || t('autoeq.sub') : t('autoeq.sub')}</small>
+    </div>
+    <Toggle label={t('autoeq.title')} checked={s.settings.auto_eq} onchange={(v) => store.apply({ auto_eq: v })} />
+  </div>
   <Segmented label={t('studio.title')} options={shown} value={preset} onchange={pick} />
 
   <button class="adv" aria-expanded={open} onclick={() => (open = !open)} disabled={preset === 'off'}>
@@ -94,6 +111,17 @@
     flex-direction: column;
     gap: 12px;
     margin-top: 10px;
+  }
+  .autoeq {
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  small {
+    display: block;
+    color: var(--sub);
+    font-size: 12.5px;
+    margin-top: 2px;
   }
   .line {
     display: flex;

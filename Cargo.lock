@@ -3951,7 +3951,7 @@ dependencies = [
 
 [[package]]
 name = "sordino-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "deep_filter",
@@ -3968,7 +3968,7 @@ dependencies = [
 
 [[package]]
 name = "sordino-ui"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "env_logger",
  "futures-util",
@@ -3985,7 +3985,7 @@ dependencies = [
 
 [[package]]
 name = "sordinoctl"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "serde_json",
@@ -3995,7 +3995,7 @@ dependencies = [
 
 [[package]]
 name = "sordinod"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "env_logger",

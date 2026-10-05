@@ -33,6 +33,7 @@ fn main() -> anyhow::Result<()> {
             "noise only (high)",
             PipelineParams {
                 echo: false,
+                auto_eq: false,
                 noise: true,
                 strength: Strength::High,
                 studio: None,
@@ -42,6 +43,7 @@ fn main() -> anyhow::Result<()> {
             "noise + studio",
             PipelineParams {
                 echo: false,
+                auto_eq: false,
                 noise: true,
                 strength: Strength::High,
                 studio: Some(StudioParams::default()),
@@ -51,6 +53,7 @@ fn main() -> anyhow::Result<()> {
             "studio only",
             PipelineParams {
                 echo: false,
+                auto_eq: false,
                 noise: false,
                 strength: Strength::High,
                 studio: Some(StudioParams::default()),

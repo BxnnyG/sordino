@@ -130,6 +130,8 @@ pub struct WorkerShared {
     /// 0 normal, 1 high (nice), 2 real-time; see `rt`.
     pub priority: AtomicU8,
     pub meter: Meter,
+    /// Latest automatic microphone correction (written by the DSP thread twice a second).
+    pub auto_eq_gains: Mutex<[f32; 8]>,
     /// Number of hops where the model failed (dry signal passed through).
     pub model_errors: AtomicU32,
     /// Times the DSP thread fell behind real time, and hops processed without the noise model.
@@ -160,6 +162,7 @@ impl Worker {
             echo_available: AtomicBool::new(false),
             priority: AtomicU8::new(0),
             meter: Meter::new(),
+            auto_eq_gains: Mutex::new([0.0; 8]),
             model_errors: AtomicU32::new(0),
             overload_events: AtomicU32::new(0),
             overload_hops: AtomicU64::new(0),
@@ -272,6 +275,7 @@ fn worker_loop(
     let mut refbuf = [0.0f32; HOP];
     let (mut hops_with_ref, mut ref_missing, mut ref_dropped) = (0u64, 0u64, 0u64);
     let mut overloaded = false;
+    let mut hops_done: u64 = 0;
     let mut dry = [0.0f32; HOP];
     let mut wet = [0.0f32; HOP];
 
@@ -358,6 +362,12 @@ fn worker_loop(
                     }
                 }
                 shared.meter.update(peak_db(&dry), peak_db(&wet));
+                hops_done += 1;
+                if hops_done % 50 == 0 {
+                    if let Ok(mut g) = shared.auto_eq_gains.try_lock() {
+                        *g = pipeline.auto_eq_gains();
+                    }
+                }
             }
         }
         thread::park_timeout(Duration::from_millis(5));

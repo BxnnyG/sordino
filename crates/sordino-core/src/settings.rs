@@ -57,6 +57,8 @@ impl SpeakerSettings {
             echo: false,
             noise: true,
             strength: self.strength,
+            // Correcting a microphone makes no sense for other people's audio.
+            auto_eq: false,
             studio: None,
         }
     }
@@ -102,6 +104,8 @@ pub struct Settings {
     /// Keep running in the tray when the window is closed.
     pub run_in_background: bool,
     pub show_all_devices: bool,
+    /// Automatically correct the microphone's tonal balance (see `autoeq`).
+    pub auto_eq: bool,
     pub noise: NoiseSettings,
     pub echo: EchoSettings,
     pub studio: StudioSettings,
@@ -116,6 +120,7 @@ impl Default for Settings {
             set_default: false,
             run_in_background: true,
             show_all_devices: false,
+            auto_eq: true,
             noise: NoiseSettings::default(),
             echo: EchoSettings::default(),
             studio: StudioSettings::default(),
@@ -130,6 +135,7 @@ impl Settings {
             echo: self.echo.enabled,
             noise: self.noise.enabled,
             strength: self.noise.strength,
+            auto_eq: self.auto_eq,
             studio: self.studio.effective(),
         }
     }

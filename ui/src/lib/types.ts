@@ -33,6 +33,7 @@ export interface Settings {
   set_default: boolean;
   run_in_background: boolean;
   show_all_devices: boolean;
+  auto_eq: boolean;
   noise: { enabled: boolean; strength: Strength };
   echo: { enabled: boolean };
   studio: { preset: Preset; custom: StudioParams };
@@ -77,6 +78,7 @@ export interface SordinoState {
   default_source: string | null;
   default_sink: string | null;
   speaker_active: boolean;
+  auto_eq_gains: number[];
   speaker_output: string | null;
   diag: Diag;
   profile_hint: ProfileHint | null;

@@ -1,7 +1,7 @@
 //! Run the Sordino pipeline offline on a file, for analysis and tuning.
 //!
 //! `process_file in.f32 out.f32 [--noise off|light|medium|high|max] [--studio off|natural|clear|warm]
-//!                          [--echo ref.f32] [--thresh min,erb,df]`
+//!                          [--echo ref.f32] [--thresh min,erb,df] [--autoeq on|off]`
 //!
 //! Files are raw mono 48 kHz f32le (convert with `ffmpeg -i in.wav -f f32le -ac 1 -ar 48000 in.f32`).
 //! The output is shifted back by the pipeline latency so it lines up with the input.
@@ -25,6 +25,7 @@ fn main() -> anyhow::Result<()> {
         "usage: process_file in.f32 out.f32 [--noise ..] [--studio ..] [--echo ref.f32]"
     );
     let mut params = PipelineParams {
+        auto_eq: true,
         echo: false,
         noise: true,
         strength: Strength::High,
@@ -50,6 +51,11 @@ fn main() -> anyhow::Result<()> {
                 let p = Preset::parse(v).ok_or_else(|| anyhow::anyhow!("bad preset {v}"))?;
                 params.studio = p.params();
             }
+            "--autoeq" => match it.next().map(String::as_str) {
+                Some("on") => params.auto_eq = true,
+                Some("off") => params.auto_eq = false,
+                _ => anyhow::bail!("--autoeq on|off"),
+            },
             "--thresh" => {
                 let v: Vec<f32> = it
                     .next()
@@ -100,6 +106,19 @@ fn main() -> anyhow::Result<()> {
             .flat_map(|v| v.to_le_bytes())
             .collect::<Vec<u8>>(),
     )?;
+    if params.auto_eq {
+        eprintln!(
+            "auto EQ gains (dB) per band {:?}: {:?}",
+            sordino_core::autoeq::BANDS,
+            p.auto_eq_gains().map(|g| (g * 10.0).round() / 10.0)
+        );
+        let (prof, snr, hops) = p.auto_eq_debug();
+        eprintln!(
+            "  profile {:?}\n  band snr {:?}\n  speech hops {hops}",
+            prof.map(|g| (g * 10.0).round() / 10.0),
+            snr.map(|g| (g * 10.0).round() / 10.0)
+        );
+    }
     eprintln!(
         "processed {:.1} s, latency {} samples ({:.1} ms)",
         input.len() as f32 / 48000.0,

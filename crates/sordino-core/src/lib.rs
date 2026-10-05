@@ -8,6 +8,7 @@
 //! * [`settings`]  persisted user settings (TOML)
 //! * [`ipc`]       state types exchanged between daemon, CLI and UI
 
+pub mod autoeq;
 pub mod denoise;
 pub mod dsp;
 pub mod echo;

@@ -93,6 +93,9 @@ pub struct State {
     pub default_sink: Option<String>,
     /// "Sordino Speaker" is running; `speaker_output` is where its cleaned audio goes.
     pub speaker_active: bool,
+    /// Current automatic microphone correction per band (dB), see `autoeq::BANDS`.
+    #[serde(default)]
+    pub auto_eq_gains: [f32; 8],
     pub speaker_output: Option<String>,
     pub profile_hint: Option<ProfileHint>,
     /// Estimated end-to-end latency added by Sordino, in milliseconds.
@@ -166,6 +169,7 @@ mod tests {
             default_source: None,
             default_sink: None,
             speaker_active: false,
+            auto_eq_gains: [0.0; 8],
             speaker_output: None,
             profile_hint: None,
             latency_ms: Some(31.5),

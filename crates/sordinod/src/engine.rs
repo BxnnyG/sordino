@@ -1256,6 +1256,11 @@ impl Engine {
             default_source: self.default_source.clone(),
             default_sink: self.default_sink.clone(),
             speaker_active: self.speaker_sink.is_some(),
+            auto_eq_gains: self
+                .worker
+                .as_ref()
+                .and_then(|w| w.shared.auto_eq_gains.lock().ok().map(|g| *g))
+                .unwrap_or_default(),
             speaker_output: self.speaker_target.clone(),
             profile_hint,
             latency_ms,

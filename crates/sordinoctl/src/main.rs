@@ -22,6 +22,7 @@ USAGE: sordinoctl <command>
   studio off|natural|clear|warm
                               studio sound preset
   default on|off              make Sordino Mic the system default microphone
+  autoeq on|off               automatic microphone correction (fixes dull mics)
   speaker on|off              clean incoming voices (play your apps into 'Sordino Speaker')
   speaker light|medium|high|max
                               strength for incoming voices
@@ -148,6 +149,15 @@ fn run() -> Result<()> {
                 s.settings.noise.strength
             );
             println!("  studio sound: {:?}", s.settings.studio.preset);
+            if s.settings.auto_eq {
+                let g = s.auto_eq_gains;
+                println!(
+                    "  mic correction: lows {:+.1} dB, presence {:+.1} dB, highs {:+.1} dB",
+                    g[0],
+                    g[4],
+                    (g[5] + g[6] + g[7]) / 3.0
+                );
+            }
             if s.speaker_active {
                 println!(
                     "  incoming voices: cleaned ({:?}), playing to {}",
@@ -258,6 +268,7 @@ fn run() -> Result<()> {
             _ => bail!("usage: sordinoctl studio off|natural|clear|warm"),
         },
         "default" => c.apply(json!({"set_default": on_off(args.get(1))?}))?,
+        "autoeq" => c.apply(json!({"auto_eq": on_off(args.get(1))?}))?,
         "speaker" => match args.get(1).map(String::as_str) {
             Some("on") => c.apply(json!({"speaker": {"enabled": true}}))?,
             Some("off") => c.apply(json!({"speaker": {"enabled": false}}))?,
