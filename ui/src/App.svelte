@@ -5,6 +5,7 @@
   import Segmented from './lib/Segmented.svelte';
   import Settings from './lib/Settings.svelte';
   import Slider from './lib/Slider.svelte';
+  import Speaker from './lib/Speaker.svelte';
   import Studio from './lib/Studio.svelte';
   import Toggle from './lib/Toggle.svelte';
   import { api } from './lib/api';
@@ -154,6 +155,8 @@
     </Card>
 
     <Studio />
+
+    <Speaker />
 
     <Card title={t('test.title')}>
       <div class="test">

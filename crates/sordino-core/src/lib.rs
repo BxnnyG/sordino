@@ -32,3 +32,7 @@ pub const DBUS_IFACE: &str = "io.github.bxnnyg.Sordino1";
 pub const VIRTUAL_MIC_NAME: &str = "sordino_mic";
 /// Name shown to the user in other apps.
 pub const VIRTUAL_MIC_DESCRIPTION: &str = "Sordino Mic";
+
+/// `node.name` / description of the virtual output that cleans incoming voices.
+pub const VIRTUAL_SPEAKER_NAME: &str = "sordino_speaker";
+pub const VIRTUAL_SPEAKER_DESCRIPTION: &str = "Sordino Speaker";

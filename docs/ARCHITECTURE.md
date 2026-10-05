@@ -76,7 +76,8 @@ The echo reference is the monitor of the default output device, captured as a se
 | M4 | Studio chain and presets, advanced sliders | done |
 | M5 | Echo suppression | done, experimental |
 | M6 | Packaging and release: deb, rpm, Arch package, Flatpak, tarball | in progress |
-| later | Output side (denoise what others say), per-app profiles | open |
+| 0.1 | Output side: "Sordino Speaker" cleans incoming voices | done |
+| later | Per-app profiles, onboarding, push-to-talk, model choice | open |
 
 ## Risks
 

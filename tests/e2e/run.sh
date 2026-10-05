@@ -131,6 +131,36 @@ check "Sordino Mic becomes the configured default" wait_for 10 sh -c "pw-metadat
 "$SORDINOCTL" default off
 check "the previous default is restored" wait_for 10 sh -c "! pw-metadata -n default 0 default.configured.audio.source | grep -q sordino_mic"
 
+echo "== Sordino Speaker (cleaning incoming voices)"
+OUT_ID=$(pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=e2e_out media.class=Audio/Sink object.linger=true audio.position=[FL FR] }' 2>/dev/null | sed -n 's/^id: *\([0-9]*\).*/\1/p' | head -1)
+wait_for 10 sh -c "pw-cli ls Node | grep -q 'node.name = \"e2e_out\"'"
+"$SORDINOCTL" default-output e2e_out
+"$SORDINOCTL" speaker light
+check "Sordino Speaker appears as an output" wait_for 15 sh -c "pw-cli ls Node | grep -q 'node.name = \"sordino_speaker\"'"
+check "it plays to the real output" wait_for 10 sh -c "'$SORDINOCTL' state | grep -q '\"speaker_output\": \"e2e_out\"'"
+pw-cat -p --rate 48000 --channels 1 --target sordino_speaker "$T/sine.wav" >/dev/null 2>&1 & PLAY=$!
+PIDS+=($PLAY)
+sleep 3
+pw-record --target e2e_out -P stream.capture.sink=true --format f32 --rate 48000 --channels 1 "$T/spk.wav" & REC=$!
+sleep 5
+kill -INT $REC; wait $REC 2>/dev/null
+python3 - "$T/spk.wav" <<'PY' && ok "audio flows through Sordino Speaker to the output" || fail "audio flows through Sordino Speaker to the output"
+import sys, numpy as np
+b = open(sys.argv[1], "rb").read(); i = b.index(b"data") + 8
+x = np.frombuffer(b[i:], dtype="<f4")
+x = x[len(x)//4:]
+rms = 20 * np.log10(np.sqrt((x**2).mean()) + 1e-9)
+assert rms > -45, f"output too quiet: {rms:.1f} dBFS"
+PY
+kill $PLAY 2>/dev/null
+"$SORDINOCTL" default-output sordino_speaker
+sleep 2
+check "no feedback loop: with Sordino Speaker as default it still plays to the real device" sh -c "'$SORDINOCTL' state | grep -q '\"speaker_output\": \"e2e_out\"'"
+check "the microphone side is unaffected" sh -c "'$SORDINOCTL' status | head -1 | grep -q running"
+"$SORDINOCTL" speaker off
+check "switching it off removes Sordino Speaker" wait_for 10 sh -c "! pw-cli ls Node | grep -q 'node.name = \"sordino_speaker\"'"
+[ -n "$OUT_ID" ] && pw-cli destroy "$OUT_ID" >/dev/null 2>&1
+
 echo "== crash safety: kill -9"
 kill -9 $DAEMON; wait $DAEMON 2>/dev/null
 check "PipeWire still answers" pw-cli info 0

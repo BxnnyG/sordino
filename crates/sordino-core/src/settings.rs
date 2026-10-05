@@ -30,6 +30,38 @@ impl Default for NoiseSettings {
     }
 }
 
+/// Cleaning what you *hear*: apps play into the virtual output "Sordino Speaker", Sordino removes
+/// noise from the other people's voices and forwards the result to the real headphones/speakers.
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct SpeakerSettings {
+    pub enabled: bool,
+    pub strength: Strength,
+    /// `node.name` of the real output device; `None` follows the system default output.
+    pub output: Option<String>,
+}
+
+impl Default for SpeakerSettings {
+    fn default() -> Self {
+        SpeakerSettings {
+            enabled: false,
+            strength: Strength::Medium,
+            output: None,
+        }
+    }
+}
+
+impl SpeakerSettings {
+    pub fn pipeline_params(&self) -> PipelineParams {
+        PipelineParams {
+            echo: false,
+            noise: true,
+            strength: self.strength,
+            studio: None,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug, Default)]
 #[serde(default)]
 pub struct EchoSettings {
@@ -73,6 +105,7 @@ pub struct Settings {
     pub noise: NoiseSettings,
     pub echo: EchoSettings,
     pub studio: StudioSettings,
+    pub speaker: SpeakerSettings,
 }
 
 impl Default for Settings {
@@ -86,6 +119,7 @@ impl Default for Settings {
             noise: NoiseSettings::default(),
             echo: EchoSettings::default(),
             studio: StudioSettings::default(),
+            speaker: SpeakerSettings::default(),
         }
     }
 }
@@ -291,6 +325,14 @@ mod tests {
         assert!(s
             .patched(&serde_json::json!({"noise": {"strength": "bogus"}}))
             .is_err());
+    }
+
+    #[test]
+    fn speaker_defaults_off_and_uses_only_noise_suppression() {
+        let s = Settings::default();
+        assert!(!s.speaker.enabled);
+        let p = s.speaker.pipeline_params();
+        assert!(p.noise && !p.echo && p.studio.is_none());
     }
 
     #[test]

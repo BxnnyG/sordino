@@ -15,6 +15,9 @@ Pick **Sordino Mic** in Discord, Element, Teams, Zoom or OBS and you are done.
   see `tools/eval_quality.py`. Costs roughly 10 to 30 % of one CPU core, depending on the machine.
 * **Robust under load**: the processing thread runs with real-time priority, and if the machine is
   still too busy it briefly skips the noise model instead of producing crackle.
+* **Clean incoming voices**: a second virtual device, **Sordino Speaker**. Pick it as the output in
+  your call app (or make it the default) and Sordino removes noise from the other people before
+  it reaches your headphones. It never plays into itself, even when it is the default output.
 * **Studio sound** presets (Natural, Clear, Warm) built from low-cut, gate, EQ, de-esser, compressor and
   limiter, plus an "Advanced" view with a few sliders.
 * **Echo suppression** for speaker setups (WebRTC AEC3). *Experimental*: it needs a few seconds to adapt.
@@ -83,6 +86,8 @@ sordinoctl studio clear          # off | natural | clear | warm
 sordinoctl default on            # make Sordino Mic the system default microphone
 sordinoctl fix-profile           # switch a mic from 'pro-audio' to a voice profile
 sordinoctl monitor on            # hear yourself, Ctrl+C to stop
+sordinoctl speaker on            # clean incoming voices via "Sordino Speaker"
+sordinoctl diag                  # glitch counters, DSP priority
 sordinoctl devices --all
 ```
 

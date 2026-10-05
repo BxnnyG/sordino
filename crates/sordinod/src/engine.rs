@@ -29,7 +29,7 @@ use pw::types::ObjectType;
 use sordino_core::ipc::{Device, ProfileHint, State, Status};
 use sordino_core::profile::{is_unfavourable, suggest};
 use sordino_core::settings::{RuntimeState, Settings};
-use sordino_core::{HOP, SAMPLE_RATE, VIRTUAL_MIC_NAME};
+use sordino_core::{HOP, SAMPLE_RATE, VIRTUAL_MIC_NAME, VIRTUAL_SPEAKER_NAME};
 
 use crate::audio::{self, AudioStream, ErrorSink, Worker, WorkerCmd, WorkerHealth, WorkerShared};
 use crate::devices::{self, CardInfo, SourceNode};
@@ -120,6 +120,16 @@ pub struct Engine {
     /// Shared with the monitor stream's RT callback.
     ab_flag: Arc<AtomicBool>,
     stats: Arc<audio::AudioStats>,
+
+    // "Sordino Speaker": cleans what you hear (independent of the microphone chain)
+    speaker_stats: Arc<audio::AudioStats>,
+    speaker_worker: Option<Worker>,
+    speaker_sink: Option<AudioStream>,
+    speaker_play: Option<AudioStream>,
+    speaker_target: Option<String>,
+    speaker_retry_at: Option<Instant>,
+    /// Last default output that was not Sordino Speaker: where "follow the default" plays to.
+    foreign_default_sink: Option<String>,
     /// Consumer end of the raw microphone tap, handed to the monitor stream.
     raw_mon: Option<Arc<Mutex<ringbuf::HeapCons<f32>>>>,
     persist: bool,
@@ -199,6 +209,13 @@ impl Engine {
             ab_original: false,
             ab_flag: Arc::new(AtomicBool::new(false)),
             stats: Arc::new(audio::AudioStats::default()),
+            speaker_stats: Arc::new(audio::AudioStats::default()),
+            speaker_worker: None,
+            speaker_sink: None,
+            speaker_play: None,
+            speaker_target: None,
+            speaker_retry_at: None,
+            foreign_default_sink: None,
             raw_mon: None,
             persist,
             mic_override,
@@ -310,6 +327,7 @@ impl Engine {
 
     fn on_core_lost(&mut self) {
         log::warn!("lost connection to PipeWire, will reconnect");
+        self.teardown_speaker();
         self.teardown_chain(false);
         self.worker = None;
         self.metadata = None;
@@ -522,7 +540,14 @@ impl Engine {
                     }
                 }
             }
-            DEFAULT_SINK => self.default_sink = name(),
+            DEFAULT_SINK => {
+                self.default_sink = name();
+                if let Some(n) = &self.default_sink {
+                    if n != VIRTUAL_SPEAKER_NAME {
+                        self.foreign_default_sink = Some(n.clone());
+                    }
+                }
+            }
             CONFIGURED_DEFAULT_SOURCE => self.configured_default_raw = value.map(str::to_string),
             _ => return,
         }
@@ -595,6 +620,11 @@ impl Engine {
                     if let Some(w) = &self.worker {
                         w.send(WorkerCmd::Monitor(None));
                     }
+                } else if which == "speaker" {
+                    // The speaker side is independent: never let it take Sordino Mic down.
+                    self.speaker_play = None;
+                    self.speaker_target = None;
+                    self.speaker_retry_at = Some(Instant::now() + Duration::from_secs(5));
                 } else {
                     self.fail_chain(format!("{which}: {msg}"));
                 }
@@ -733,6 +763,7 @@ impl Engine {
         let Some(core) = self.core.clone() else {
             return;
         };
+        self.reconcile_speaker(&core);
         if let Some(t) = self.retry_at {
             if Instant::now() < t {
                 return;
@@ -892,6 +923,106 @@ impl Engine {
         }
     }
 
+    /// The real output device "Sordino Speaker" plays to. Never Sordino Speaker itself.
+    fn speaker_output_target(&self) -> Option<String> {
+        let usable =
+            |n: &str| n != VIRTUAL_SPEAKER_NAME && self.sinks.values().any(|s| s.name == n);
+        if let Some(o) = self.settings.speaker.output.as_deref() {
+            return usable(o).then(|| o.to_string());
+        }
+        if let Some(d) = self.foreign_default_sink.as_deref().filter(|d| usable(d)) {
+            return Some(d.to_string());
+        }
+        let mut all: Vec<&SourceNode> = self
+            .sinks
+            .values()
+            .filter(|s| s.name != VIRTUAL_SPEAKER_NAME)
+            .collect();
+        all.sort_by_key(|s| s.node_id);
+        all.first().map(|s| s.name.clone())
+    }
+
+    fn teardown_speaker(&mut self) {
+        self.speaker_play = None;
+        self.speaker_sink = None;
+        self.speaker_worker = None;
+        self.speaker_target = None;
+    }
+
+    fn reconcile_speaker(&mut self, core: &CoreRc) {
+        if !(self.settings.enabled && self.settings.speaker.enabled) {
+            self.teardown_speaker();
+            return;
+        }
+        if self.speaker_retry_at.is_some_and(|t| Instant::now() < t) {
+            return;
+        }
+        self.speaker_retry_at = None;
+        if self.speaker_worker.is_none() {
+            match Worker::spawn(
+                self.settings.speaker.pipeline_params(),
+                self.speaker_stats.clone(),
+            ) {
+                Ok(w) => self.speaker_worker = Some(w),
+                Err(e) => {
+                    log::warn!("cannot start the speaker processing thread: {e:#}");
+                    self.speaker_retry_at = Some(Instant::now() + Duration::from_secs(10));
+                    return;
+                }
+            }
+        }
+        let worker = self.speaker_worker.as_ref().expect("speaker worker exists");
+        worker.send(WorkerCmd::Params(self.settings.speaker.pipeline_params()));
+
+        if self.speaker_sink.is_none() {
+            let (prod, cons) = audio::new_ring();
+            match audio::create_virtual_speaker(
+                core,
+                prod,
+                self.speaker_stats.clone(),
+                worker.wake_handle(),
+            ) {
+                Ok(s) => {
+                    worker.send(WorkerCmd::Input(Some(cons)));
+                    self.speaker_sink = Some(s);
+                    log::info!("Sordino Speaker created");
+                }
+                Err(e) => {
+                    log::warn!("cannot create Sordino Speaker: {e:#}");
+                    self.speaker_retry_at = Some(Instant::now() + Duration::from_secs(10));
+                    return;
+                }
+            }
+        }
+
+        let target = self.speaker_output_target();
+        if target != self.speaker_target || (target.is_some() && self.speaker_play.is_none()) {
+            self.speaker_play = None;
+            self.speaker_target = None;
+            if let Some(t) = target {
+                let (prod, cons) = audio::new_ring();
+                match audio::create_speaker_playback(
+                    core,
+                    &t,
+                    cons,
+                    self.speaker_stats.clone(),
+                    self.error_sink(),
+                ) {
+                    Ok(s) => {
+                        log::info!("Sordino Speaker plays to {t}");
+                        worker.send(WorkerCmd::Output(prod));
+                        self.speaker_play = Some(s);
+                        self.speaker_target = Some(t);
+                    }
+                    Err(e) => {
+                        log::warn!("cannot play to {t}: {e:#}");
+                        self.speaker_retry_at = Some(Instant::now() + Duration::from_secs(5));
+                    }
+                }
+            }
+        }
+    }
+
     /// Make Sordino Mic the default microphone (`on`) or give the old default back (`!on`).
     fn manage_default(&mut self, on: bool) {
         let Some((_, md, _)) = &self.metadata else {
@@ -959,6 +1090,7 @@ impl Engine {
         log::info!("shutting down");
         self.restore_default();
         self.teardown_chain(true);
+        self.teardown_speaker();
     }
 
     // -----------------------------------------------------------------------------------------
@@ -980,6 +1112,10 @@ impl Engine {
             return;
         }
 
+        if self.speaker_retry_at.is_some_and(|t| Instant::now() >= t) {
+            self.reconcile();
+            self.dirty();
+        }
         if self.retry_at.is_some_and(|t| Instant::now() >= t) {
             self.reconcile();
             self.dirty();
@@ -1119,6 +1255,8 @@ impl Engine {
             },
             default_source: self.default_source.clone(),
             default_sink: self.default_sink.clone(),
+            speaker_active: self.speaker_sink.is_some(),
+            speaker_output: self.speaker_target.clone(),
             profile_hint,
             latency_ms,
             default_is_sordino: self.default_source.as_deref() == Some(VIRTUAL_MIC_NAME),

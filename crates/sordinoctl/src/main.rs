@@ -22,6 +22,11 @@ USAGE: sordinoctl <command>
   studio off|natural|clear|warm
                               studio sound preset
   default on|off              make Sordino Mic the system default microphone
+  speaker on|off              clean incoming voices (play your apps into 'Sordino Speaker')
+  speaker light|medium|high|max
+                              strength for incoming voices
+  speaker-output <node.name|auto>
+                              where Sordino Speaker plays to (auto = system default output)
   default-mic <node.name>     choose the system default microphone ('sordino_mic' for Sordino Mic)
   default-output <node.name>  choose the system default output (speakers / headphones)
   outputs                     list output devices
@@ -143,6 +148,15 @@ fn run() -> Result<()> {
                 s.settings.noise.strength
             );
             println!("  studio sound: {:?}", s.settings.studio.preset);
+            if s.speaker_active {
+                println!(
+                    "  incoming voices: cleaned ({:?}), playing to {}",
+                    s.settings.speaker.strength,
+                    s.speaker_output
+                        .as_deref()
+                        .unwrap_or("nothing (no output device)")
+                );
+            }
             if let Some(l) = s.latency_ms {
                 println!("  added latency: ~{l:.0} ms");
             }
@@ -244,6 +258,20 @@ fn run() -> Result<()> {
             _ => bail!("usage: sordinoctl studio off|natural|clear|warm"),
         },
         "default" => c.apply(json!({"set_default": on_off(args.get(1))?}))?,
+        "speaker" => match args.get(1).map(String::as_str) {
+            Some("on") => c.apply(json!({"speaker": {"enabled": true}}))?,
+            Some("off") => c.apply(json!({"speaker": {"enabled": false}}))?,
+            Some(l @ ("light" | "medium" | "high" | "max")) => {
+                c.apply(json!({"speaker": {"enabled": true, "strength": l}}))?
+            }
+            _ => bail!("usage: sordinoctl speaker on|off|light|medium|high|max"),
+        },
+        "speaker-output" => {
+            let o = args
+                .get(1)
+                .context("usage: sordinoctl speaker-output <node.name|auto>")?;
+            c.apply(json!({"speaker": {"output": if o == "auto" { serde_json::Value::Null } else { json!(o) }}}))?;
+        }
         "default-mic" | "default-output" => {
             let name = args
                 .get(1)

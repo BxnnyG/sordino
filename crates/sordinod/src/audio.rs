@@ -26,7 +26,10 @@ use ringbuf::traits::{Consumer, Observer, Producer, Split};
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use sordino_core::level::{peak_db, SILENCE_DB};
 use sordino_core::pipeline::{Pipeline, PipelineParams};
-use sordino_core::{HOP, SAMPLE_RATE, VIRTUAL_MIC_DESCRIPTION, VIRTUAL_MIC_NAME};
+use sordino_core::{
+    HOP, SAMPLE_RATE, VIRTUAL_MIC_DESCRIPTION, VIRTUAL_MIC_NAME, VIRTUAL_SPEAKER_DESCRIPTION,
+    VIRTUAL_SPEAKER_NAME,
+};
 use spa::pod::Pod;
 
 /// Samples per ring buffer (~340 ms). Only a safety margin; steady state holds a few hops.
@@ -814,6 +817,99 @@ pub fn create_monitor(
         })
         .state_changed(watch_state("monitor", errors))
         .process(process_monitor)
+        .register()?;
+    let bytes = format_pod()?;
+    let mut params = [Pod::from_bytes(&bytes).ok_or_else(|| anyhow!("invalid format pod"))?];
+    stream.connect(
+        spa::utils::Direction::Output,
+        None,
+        StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS | StreamFlags::RT_PROCESS,
+        &mut params,
+    )?;
+    Ok(AudioStream {
+        _listener: Box::new(listener),
+        stream,
+    })
+}
+
+/// The virtual output "Sordino Speaker". Apps play into it; whatever arrives goes into `prod`
+/// (mono 48 kHz, PipeWire downmixes stereo for us) to be cleaned by its own DSP worker.
+pub fn create_virtual_speaker(
+    core: &CoreRc,
+    prod: HeapProd<f32>,
+    stats: Arc<AudioStats>,
+    wake: Thread,
+) -> Result<AudioStream> {
+    // `Audio/Sink` with a capture-direction stream, as the loopback module does it.
+    let props = properties! {
+        *pw::keys::MEDIA_CLASS => "Audio/Sink",
+        *pw::keys::MEDIA_TYPE => "Audio",
+        *pw::keys::NODE_NAME => VIRTUAL_SPEAKER_NAME,
+        *pw::keys::NODE_DESCRIPTION => VIRTUAL_SPEAKER_DESCRIPTION,
+        *pw::keys::NODE_NICK => VIRTUAL_SPEAKER_DESCRIPTION,
+        *pw::keys::NODE_VIRTUAL => "true",
+        *pw::keys::DEVICE_ICON_NAME => "audio-headphones",
+        *pw::keys::APP_NAME => "Sordino",
+        "node.group" => "sordino-speaker",
+        "audio.position" => "MONO",
+    };
+    let stream = StreamRc::new(core.clone(), VIRTUAL_SPEAKER_DESCRIPTION, props)?;
+    let listener = stream
+        .add_local_listener_with_user_data(CaptureData {
+            prod,
+            wake,
+            raw: None,
+            stats: Some(stats),
+        })
+        .process(process_capture)
+        .register()?;
+    let bytes = format_pod()?;
+    let mut params = [Pod::from_bytes(&bytes).ok_or_else(|| anyhow!("invalid format pod"))?];
+    // No AUTOCONNECT: this node is an output device that apps connect to.
+    stream.connect(
+        spa::utils::Direction::Input,
+        None,
+        StreamFlags::MAP_BUFFERS | StreamFlags::RT_PROCESS,
+        &mut params,
+    )?;
+    Ok(AudioStream {
+        _listener: Box::new(listener),
+        stream,
+    })
+}
+
+/// Play the cleaned incoming audio on the real output device `target`.
+pub fn create_speaker_playback(
+    core: &CoreRc,
+    target: &str,
+    cons: HeapCons<f32>,
+    stats: Arc<AudioStats>,
+    errors: ErrorSink,
+) -> Result<AudioStream> {
+    let props = properties! {
+        *pw::keys::MEDIA_TYPE => "Audio",
+        *pw::keys::MEDIA_CATEGORY => "Playback",
+        *pw::keys::NODE_NAME => "sordino.speaker-out",
+        *pw::keys::NODE_DESCRIPTION => "Sordino (cleaned voices)",
+        *pw::keys::APP_NAME => "Sordino",
+        *pw::keys::TARGET_OBJECT => target,
+        // Never fall back to the default output: that could be Sordino Speaker itself (a loop).
+        "node.dont-reconnect" => "true",
+        "node.dont-fallback" => "true",
+        "node.group" => "sordino-speaker",
+    };
+    let stream = StreamRc::new(core.clone(), "Sordino speaker output", props)?;
+    let listener = stream
+        .add_local_listener_with_user_data(SourceData {
+            cons,
+            primed: false,
+            prebuffer: PREBUFFER,
+            stats: Some(stats),
+            extra: 0,
+            calm_callbacks: 0,
+        })
+        .state_changed(watch_state("speaker", errors))
+        .process(process_source)
         .register()?;
     let bytes = format_pod()?;
     let mut params = [Pod::from_bytes(&bytes).ok_or_else(|| anyhow!("invalid format pod"))?];

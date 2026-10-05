@@ -36,6 +36,7 @@ export interface Settings {
   noise: { enabled: boolean; strength: Strength };
   echo: { enabled: boolean };
   studio: { preset: Preset; custom: StudioParams };
+  speaker: { enabled: boolean; strength: Strength; output: string | null };
 }
 
 export interface ProfileInfo {
@@ -75,6 +76,8 @@ export interface SordinoState {
   sinks: Device[];
   default_source: string | null;
   default_sink: string | null;
+  speaker_active: boolean;
+  speaker_output: string | null;
   diag: Diag;
   profile_hint: ProfileHint | null;
   latency_ms: number | null;

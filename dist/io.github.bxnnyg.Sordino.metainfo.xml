@@ -17,6 +17,7 @@
     <p>Features:</p>
     <ul>
       <li>AI noise suppression with four strengths</li>
+      <li>Clean incoming voices too: "Sordino Speaker" removes noise from the other people in a call</li>
       <li>Studio sound presets (natural, clear, warm) and an advanced view</li>
       <li>Experimental echo suppression for speaker setups</li>
       <li>Detects microphones stuck on the "pro-audio" profile and fixes them with one click</li>

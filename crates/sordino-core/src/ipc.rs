@@ -91,6 +91,9 @@ pub struct State {
     /// `node.name` of the current system default microphone / output.
     pub default_source: Option<String>,
     pub default_sink: Option<String>,
+    /// "Sordino Speaker" is running; `speaker_output` is where its cleaned audio goes.
+    pub speaker_active: bool,
+    pub speaker_output: Option<String>,
     pub profile_hint: Option<ProfileHint>,
     /// Estimated end-to-end latency added by Sordino, in milliseconds.
     pub latency_ms: Option<f32>,
@@ -162,6 +165,8 @@ mod tests {
             sinks: vec![],
             default_source: None,
             default_sink: None,
+            speaker_active: false,
+            speaker_output: None,
             profile_hint: None,
             latency_ms: Some(31.5),
             default_is_sordino: false,

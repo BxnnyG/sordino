@@ -9,12 +9,19 @@ updates:
       rust-minor:
         update-types: [minor, patch]
     ignore:
-      # libDF is written against exactly this tract version, see crates/sordino-core/Cargo.toml.
+      # Major versions need a person: they usually need code changes.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # tract and ndarray must move together with the vendored DeepFilterNet (third_party/).
       - dependency-name: "tract-*"
+      - dependency-name: "ndarray"
   - package-ecosystem: npm
     directory: /ui
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     groups:
       npm-minor:
         update-types: [minor, patch]
