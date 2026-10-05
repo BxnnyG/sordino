@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.2
+
+* **Silence between words is adjustable**: how long it stays open after a word (100-1500 ms,
+  now 400 ms by default instead of 200 ms), sensitivity (strict / normal / gentle) and how much
+  pauses are lowered (silent, much quieter, quieter). The new defaults cut far less of the voice:
+  on the test recording 231 instead of 1014 speech frames were attenuated by more than 6 dB
+  (0.3 % instead of 5.6 % of the speech energy); in exchange more typing gets through, which
+  "strict" brings back. `sordinoctl pause-hold|pause-sensitivity|pause-depth`.
+* **Volume per device**: a Volume card with microphone and headphone sliders; every device
+  remembers its own level and gets it back whenever it is plugged in. The clipping guard now
+  lowers only the microphone that clips.
+* **Wide windows**: two columns when the window is maximised or full screen, settings as a side
+  panel, the setup assistant as a centred dialog.
+
 ## 0.2.1
 
 * **Updates in the app.** Sordino checks GitHub once a day (can be switched off) and shows new

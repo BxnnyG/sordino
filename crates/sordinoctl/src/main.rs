@@ -24,6 +24,10 @@ USAGE: sordinoctl <command>
   default on|off              make Sordino Mic the system default microphone
   autoeq on|off               automatic microphone correction (fixes dull mics)
   pause-mute on|off           silence between words (mutes typing in pauses)
+  pause-hold <ms>             how long it stays open after a word (100-1500, default 400)
+  pause-sensitivity low|normal|high
+                              high = cuts less of your voice, lets more typing through
+  pause-depth <dB|mute>       how much pauses are lowered (e.g. -12) or 'mute'
   echo on|off                 echo suppression (others hearing themselves from your speakers)
   mute [on|off|toggle]        mute Sordino Mic (default: toggle)
   panic [on|off|toggle]       mute Sordino Mic AND your headphones/speakers (default: toggle);
@@ -377,10 +381,41 @@ fn run() -> Result<()> {
                     .ok()
                     .filter(|p: &f32| (0.0..=100.0).contains(p))
                     .context("usage: sordinoctl mic-level <0-100|off>")?;
-                c.apply(json!({"mic_level": {"volume": pct / 100.0}}))?
+                // Remembered for the microphone in use (and as the general fallback).
+                let st = c.state()?;
+                let mut patch = json!({"mic_level": {"volume": pct / 100.0}});
+                if let Some(m) = st.active_mic {
+                    patch["device_levels"] = json!({ m: pct / 100.0 });
+                }
+                c.apply(patch)?
             }
             None => bail!("usage: sordinoctl mic-level <0-100|off>"),
         },
+        "pause-hold" => {
+            let ms: u32 = args
+                .get(1)
+                .and_then(|v| v.trim_end_matches("ms").parse().ok())
+                .context("usage: sordinoctl pause-hold <100-1500 ms>")?;
+            c.apply(json!({"noise": {"pause": {"hold_ms": ms}}}))?
+        }
+        "pause-sensitivity" => match args.get(1).map(String::as_str) {
+            Some(v @ ("low" | "normal" | "high")) => {
+                c.apply(json!({"noise": {"pause": {"sensitivity": v}}}))?
+            }
+            _ => bail!("usage: sordinoctl pause-sensitivity low|normal|high"),
+        },
+        "pause-depth" => {
+            let db: f32 = match args.get(1).map(String::as_str) {
+                Some("mute") => -60.0,
+                Some(v) => v
+                    .trim_end_matches("dB")
+                    .parse()
+                    .ok()
+                    .context("usage: sordinoctl pause-depth <-3..-60 dB|mute>")?,
+                None => bail!("usage: sordinoctl pause-depth <-3..-60 dB|mute>"),
+            };
+            c.apply(json!({"noise": {"pause": {"depth_db": -db.abs()}}}))?
+        }
         "mode" => {
             let m = args
                 .get(1)
@@ -405,7 +440,12 @@ fn run() -> Result<()> {
                     .ok()
                     .filter(|p: &f32| (0.0..=100.0).contains(p))
                     .context("usage: sordinoctl output-level <0-100|off>")?;
-                c.apply(json!({"output_level": {"volume": pct / 100.0}}))?
+                let st = c.state()?;
+                let mut patch = json!({"output_level": {"volume": pct / 100.0}});
+                if let Some(o) = st.output_device {
+                    patch["device_levels"] = json!({ o: pct / 100.0 });
+                }
+                c.apply(patch)?
             }
             None => bail!("usage: sordinoctl output-level <0-100|off>"),
         },

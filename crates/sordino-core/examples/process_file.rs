@@ -2,7 +2,8 @@
 //!
 //! `process_file in.f32 out.f32 [--noise off|light|medium|high|max] [--studio off|natural|clear|warm]
 //!                          [--echo ref.f32] [--thresh min,erb,df] [--autoeq on|off]
-//!                          [--pause-mute on|off] [--agc on|off]
+//!                          [--pause-mute on|off] [--pause-hold ms]
+//!                          [--pause-sensitivity low|normal|high] [--pause-depth dB] [--agc on|off]
 //!                          [--dereverb off|small|medium|large]
 //!                          [--lsnr-out lsnr.f32]`
 //!
@@ -34,6 +35,7 @@ fn main() -> anyhow::Result<()> {
         strength: Strength::High,
         studio: Preset::Natural.params(),
         pause_mute: true,
+        pause: sordino_core::speech_gate::GateParams::default(),
         mute: false,
         agc: true,
         dereverb: None,
@@ -74,6 +76,23 @@ fn main() -> anyhow::Result<()> {
                 }
                 None => anyhow::bail!("--dereverb off|small|medium|large"),
             },
+            "--pause-hold" => {
+                params.pause.hold_ms = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--pause-hold needs ms"))?
+                    .parse()?
+            }
+            "--pause-sensitivity" => {
+                let v = it.next().map(String::as_str).unwrap_or("");
+                params.pause.sensitivity = sordino_core::speech_gate::Sensitivity::parse(v)
+                    .ok_or_else(|| anyhow::anyhow!("--pause-sensitivity low|normal|high"))?
+            }
+            "--pause-depth" => {
+                params.pause.depth_db = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--pause-depth needs dB"))?
+                    .parse()?
+            }
             "--agc" => match it.next().map(String::as_str) {
                 Some("on") => params.agc = true,
                 Some("off") => params.agc = false,

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Slider from './Slider.svelte';
   import Toggle from './Toggle.svelte';
   import { api } from './api';
   import { store } from './store.svelte';
@@ -40,18 +39,6 @@
       autoError = String(e);
     }
     await refreshAuto();
-  }
-
-  // Output volume slider: shows the device value, sends only the last value while dragging.
-  let outDrag = $state<number | null>(null);
-  let outTimer: ReturnType<typeof setTimeout> | undefined;
-  function setOut(v: number) {
-    outDrag = v;
-    clearTimeout(outTimer);
-    outTimer = setTimeout(() => {
-      store.apply({ output_level: { volume: Math.round(v * 100) / 100 } });
-      setTimeout(() => (outDrag = null), 600);
-    }, 150);
   }
 
   let checking = $state(false);
@@ -100,18 +87,6 @@
     </select>
   </label>
 
-  {#if s.output_volume !== null && s.output_volume !== undefined}
-    <Slider
-      label={t('settings.out_level')}
-      min={0}
-      max={1}
-      step={0.01}
-      value={outDrag ?? s.output_volume}
-      format={(v) => `${Math.round(v * 100)} %`}
-      onchange={setOut}
-    />
-    <p class="hint">{t('settings.out_level_hint')}</p>
-  {/if}
 
   <h3>{t('settings.startup')}</h3>
   {#if !auto.flatpak}
@@ -197,6 +172,8 @@
     right: 0;
     bottom: 0;
     max-height: 92vh;
+    max-width: 640px;
+    margin: 0 auto;
     overflow: auto;
     background: var(--card);
     border-radius: 22px 22px 0 0;
@@ -309,5 +286,16 @@
     padding: 10px 14px;
     font: inherit;
     cursor: pointer;
+  }
+  /* Wide window: a side panel instead of a bottom sheet. */
+  @media (min-width: 900px) {
+    .sheet {
+      left: auto;
+      top: 0;
+      width: 440px;
+      max-height: none;
+      border-radius: 22px 0 0 22px;
+      animation: none;
+    }
   }
 </style>

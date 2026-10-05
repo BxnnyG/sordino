@@ -30,10 +30,13 @@ export interface StudioParams {
 export type Mode = 'call' | 'streaming' | 'recording';
 export type RoomSize = 'small' | 'medium' | 'large';
 
+export type GateSensitivity = 'low' | 'normal' | 'high';
+
 export interface NoiseSettings {
   enabled: boolean;
   strength: Strength;
   pause_mute: boolean;
+  pause: { hold_ms: number; sensitivity: GateSensitivity; depth_db: number };
   auto_level: boolean;
   dereverb: RoomSize | null;
 }
@@ -49,6 +52,7 @@ export interface Settings {
   mic_level: { volume: number | null; avoid_clipping: boolean };
   noise: NoiseSettings;
   output_level: { volume: number | null };
+  device_levels: Record<string, number>;
   notify_muted_talk: boolean;
   mode: Mode;
   modes: Record<Mode, { noise: NoiseSettings; studio: { preset: Preset; custom: StudioParams }; auto_eq: boolean }>;
@@ -109,6 +113,7 @@ export interface SordinoState {
   presets: Record<string, StudioParams>;
   mic_volume: number | null;
   output_volume: number | null;
+  output_device: string | null;
   talking_while_muted: boolean;
   output_muted: boolean;
   panic: boolean;

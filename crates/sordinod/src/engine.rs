@@ -615,6 +615,10 @@ impl Engine {
                     if s.output_level.volume != self.settings.output_level.volume {
                         self.output_level_applied = None;
                     }
+                    if s.device_levels != self.settings.device_levels {
+                        self.mic_level_applied = None;
+                        self.output_level_applied = None;
+                    }
                     let unmuted = self.settings.muted && !s.muted;
                     self.settings = s;
                     if unmuted && self.panic {
@@ -787,10 +791,10 @@ impl Engine {
     /// Apply the configured input level once per microphone node (start, hotplug, change).
     /// Changes made later in the desktop's sound settings are left alone.
     fn ensure_mic_level(&mut self) {
-        let Some(volume) = self.settings.mic_level.sanitized_volume() else {
+        let Some(mic) = self.capture_target.clone() else {
             return;
         };
-        let Some(mic) = self.capture_target.clone() else {
+        let Some(volume) = self.settings.level_for(&mic, false) else {
             return;
         };
         let Some(node_id) = self
@@ -812,10 +816,10 @@ impl Engine {
 
     /// Same as [`Self::ensure_mic_level`] for the real output.
     fn ensure_output_level(&mut self) {
-        let Some(volume) = self.settings.output_level.sanitized_volume() else {
+        let Some(out) = self.real_output() else {
             return;
         };
-        let Some(out) = self.real_output() else {
+        let Some(volume) = self.settings.level_for(&out, true) else {
             return;
         };
         let Some(node_id) = self
@@ -913,8 +917,7 @@ impl Engine {
         };
         let current = self
             .settings
-            .mic_level
-            .sanitized_volume()
+            .level_for(&mic, false)
             .or_else(|| self.route_for(&mic, false)?.1.user_volume());
         let Some(current) = current else { return };
         let floor = sordino_core::settings::MicLevelSettings::GUARD_FLOOR;
@@ -923,7 +926,7 @@ impl Engine {
         }
         let lower = (current - 0.03).max(floor);
         self.last_clip_adjust = Some(Instant::now());
-        self.settings.mic_level.volume = Some(lower);
+        self.settings.device_levels.insert(mic.clone(), lower);
         self.mic_level_applied = None;
         self.save_settings();
         log::info!(
@@ -1575,6 +1578,7 @@ impl Engine {
                 .and_then(|o| self.route_for(&o, true))
                 .and_then(|(_, r)| r.user_volume()),
             talking_while_muted: self.talking_while_muted,
+            output_device: self.real_output(),
         }
     }
 

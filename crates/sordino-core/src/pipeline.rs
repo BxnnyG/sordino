@@ -8,7 +8,7 @@ use crate::autoeq::AutoEq;
 use crate::denoise::{Denoiser, Strength, Thresholds};
 use crate::dereverb::{Dereverb, RoomSize};
 use crate::echo::Echo;
-use crate::speech_gate::SpeechGate;
+use crate::speech_gate::{GateParams, SpeechGate};
 use crate::studio::{StudioChain, StudioParams};
 use crate::HOP;
 
@@ -23,6 +23,7 @@ pub struct PipelineParams {
     pub studio: Option<StudioParams>,
     /// Mute between words (see [`crate::speech_gate`]). Only acts while noise suppression runs.
     pub pause_mute: bool,
+    pub pause: GateParams,
     /// Send silence (mute button). Fades over one hop.
     pub mute: bool,
     /// Automatic level (see [`crate::agc`]). Learns only while the noise model runs.
@@ -40,6 +41,7 @@ impl Default for PipelineParams {
             auto_eq: true,
             studio: StudioParams::default().into(),
             pause_mute: true,
+            pause: GateParams::default(),
             mute: false,
             agc: true,
             dereverb: None,
@@ -102,7 +104,11 @@ impl Pipeline {
             overloaded: false,
             last_lsnr: None,
             auto_eq: AutoEq::new(),
-            gate: SpeechGate::new(),
+            gate: {
+                let mut g = SpeechGate::new();
+                g.set_params(params.pause);
+                g
+            },
             agc: Agc::new(),
             dereverb: Dereverb::new(params.dereverb.unwrap_or_default()),
         })
@@ -155,6 +161,7 @@ impl Pipeline {
     }
 
     pub fn set_params(&mut self, p: PipelineParams) {
+        self.gate.set_params(p.pause);
         if let Some(room) = p.dereverb {
             if self.params.dereverb.is_none() {
                 self.dereverb.reset();
@@ -354,6 +361,7 @@ mod tests {
             auto_eq: false,
             studio: None,
             pause_mute: false,
+            pause: GateParams::default(),
             mute: false,
             agc: false,
             dereverb: None,
@@ -457,6 +465,7 @@ mod overload_tests {
             auto_eq: false,
             studio: None,
             pause_mute: false,
+            pause: GateParams::default(),
             mute: false,
             agc: false,
             dereverb: None,

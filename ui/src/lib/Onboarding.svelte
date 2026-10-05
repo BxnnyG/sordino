@@ -262,4 +262,14 @@
     padding: 2px 8px;
     font-size: 13px;
   }
+  /* Wide window: a centred dialog. */
+  @media (min-width: 900px) {
+    .sheet {
+      inset: 50% auto auto 50%;
+      transform: translate(-50%, -50%);
+      width: 520px;
+      border-radius: 18px;
+      max-height: 86vh;
+    }
+  }
 </style>

@@ -113,6 +113,9 @@ pub struct State {
     /// lets us read and set it.
     #[serde(default)]
     pub mic_volume: Option<f32>,
+    /// `node.name` of the real output (headphones/speakers) Sordino controls.
+    #[serde(default)]
+    pub output_device: Option<String>,
     /// Volume of the real output (0..1, `wpctl` scale), if the device exposes it.
     #[serde(default)]
     pub output_volume: Option<f32>,
@@ -200,6 +203,7 @@ mod tests {
             mic_volume: Some(0.8),
             output_muted: false,
             output_volume: None,
+            output_device: None,
             talking_while_muted: false,
             panic: false,
         };

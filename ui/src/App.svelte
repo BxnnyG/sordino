@@ -9,6 +9,8 @@
   import Studio from './lib/Studio.svelte';
   import Onboarding from './lib/Onboarding.svelte';
   import UpdateBanner from './lib/UpdateBanner.svelte';
+  import Volume from './lib/Volume.svelte';
+  import PauseSettings from './lib/PauseSettings.svelte';
   import Toggle from './lib/Toggle.svelte';
   import { api } from './lib/api';
   import { t } from './lib/i18n';
@@ -53,19 +55,6 @@
     } catch {
       /* clipboard may be unavailable; the name is shown anyway */
     }
-  }
-
-  // The level slider follows the device, but while dragging it shows the dragged value and only
-  // sends the last one (every change is written to the device and the settings file).
-  let levelDrag = $state<number | null>(null);
-  let levelTimer: ReturnType<typeof setTimeout> | undefined;
-  function setLevel(v: number) {
-    levelDrag = v;
-    clearTimeout(levelTimer);
-    levelTimer = setTimeout(() => {
-      store.apply({ mic_level: { volume: Math.round(v * 100) / 100 } });
-      setTimeout(() => (levelDrag = null), 600);
-    }, 150);
   }
 
   let ab = $state(false);
@@ -115,6 +104,7 @@
 
     <UpdateBanner />
 
+    <div class="controls">
     <div class="mutebar">
       <button
         class="mute {s.settings.muted ? 'on' : ''}"
@@ -134,6 +124,7 @@
       value={s.settings.mode}
       onchange={(m) => store.apply({ mode: m })}
     />
+    </div>
     {#if s.talking_while_muted}
       <div class="banner bad talking"><strong>{t('mute.talking')}</strong></div>
     {/if}
@@ -151,6 +142,8 @@
       </div>
     {/if}
 
+    <div class="cols">
+    <div class="col">
     <Card title={t('mic.title')}>
       <div class="select">
         <select
@@ -171,30 +164,6 @@
         <LevelMeter label={t('meter.mic')} db={store.levels.input_db} active={running} />
         <LevelMeter label={t('meter.out')} db={store.levels.output_db} active={running} />
       </div>
-      {#if s.mic_volume !== null && s.mic_volume !== undefined}
-        <div class="level">
-          <Slider
-            label={t('level.title')}
-            min={0}
-            max={1}
-            step={0.01}
-            value={levelDrag ?? s.mic_volume}
-            format={(v) => `${Math.round(v * 100)} %`}
-            onchange={setLevel}
-          />
-          <div class="line guard">
-            <div>
-              <span>{t('level.guard')}</span>
-              <small>{t('level.guard_sub')}</small>
-            </div>
-            <Toggle
-              label={t('level.guard')}
-              checked={s.settings.mic_level.avoid_clipping}
-              onchange={(v) => store.apply({ mic_level: { avoid_clipping: v } })}
-            />
-          </div>
-        </div>
-      {/if}
     </Card>
 
     <Card title={t('noise.title')} sub={t('noise.sub')}>
@@ -246,8 +215,14 @@
             onchange={(v) => store.apply({ noise: { pause_mute: v } })}
           />
         </div>
+        {#if s.settings.noise.pause_mute}<PauseSettings />{/if}
       {/if}
     </Card>
+
+
+    </div>
+    <div class="col">
+    <Volume />
 
     <Card title={t('echo.title')} sub={t('echo.sub')} dim={!s.echo_available}>
       {#snippet control()}
@@ -281,6 +256,9 @@
       </div>
     </Card>
 
+    </div>
+    </div>
+
     <footer>
       <div>
         {t('footer.pick')}: <button class="name" onclick={copyName} title={t('footer.copy')}>Sordino Mic</button>
@@ -311,6 +289,41 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+  .controls,
+  .cols,
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  /* Wide or maximised window: two columns instead of one narrow strip. */
+  @media (min-width: 900px) {
+    main {
+      max-width: 1120px;
+      padding: 24px 32px 32px;
+      gap: 16px;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: center;
+      gap: 16px;
+    }
+    .cols {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: start;
+      gap: 16px;
+    }
+    .col {
+      gap: 16px;
+    }
+  }
+  @media (min-width: 1500px) {
+    main {
+      max-width: 1400px;
+    }
   }
   .top {
     display: flex;

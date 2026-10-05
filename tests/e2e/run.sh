@@ -134,7 +134,11 @@ check "panic: state says panic and muted" sh -c "'$SORDINOCTL' state | grep -q '
 lvl=$(rms_of); [ "${lvl%.*}" -lt -80 ] && ok "panic: Sordino Mic is silent ($lvl dBFS)" || fail "panic: Sordino Mic is silent ($lvl dBFS)"
 "$SORDINOCTL" panic off >/dev/null
 lvl=$(rms_of); [ "${lvl%.*}" -gt -30 ] && ok "panic off: the voice is back ($lvl dBFS)" || fail "panic off: the voice is back ($lvl dBFS)"
-check "mode switch brings the mode's own settings" sh -c "'$SORDINOCTL' mode recording >/dev/null && '$SORDINOCTL' state | grep -q '\"strength\": \"medium\"' && '$SORDINOCTL' mode call >/dev/null && '$SORDINOCTL' state | grep -q '\"mode\": \"call\"'"
+# Settings are applied asynchronously: wait for the daemon to report them.
+"$SORDINOCTL" mode recording >/dev/null
+check "switching to 'recording' loads its settings" wait_for 5 sh -c "'$SORDINOCTL' state | python3 -c 'import json,sys; s=json.load(sys.stdin)[\"settings\"]; sys.exit(not (s[\"mode\"]==\"recording\" and s[\"noise\"][\"strength\"]==\"medium\" and not s[\"noise\"][\"auto_level\"]))'"
+"$SORDINOCTL" mode call >/dev/null
+check "switching back to 'call' restores it" wait_for 5 sh -c "'$SORDINOCTL' state | python3 -c 'import json,sys; s=json.load(sys.stdin)[\"settings\"]; sys.exit(not (s[\"mode\"]==\"call\" and s[\"noise\"][\"strength\"]==\"high\"))'"
 "$SORDINOCTL" set '{"noise":{"enabled":true,"dereverb":"medium","auto_level":true}}' >/dev/null
 sleep 3
 lvl=$(rms_of); [ "${lvl%.*}" -gt -60 ] && ok "room echo reduction + automatic level: audio still flows ($lvl dBFS)" || fail "room echo reduction + automatic level: audio still flows ($lvl dBFS)"

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::denoise::Strength;
 use crate::dereverb::RoomSize;
 use crate::pipeline::PipelineParams;
+use crate::speech_gate::GateParams;
 use crate::studio::{Preset, StudioParams};
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -22,6 +23,8 @@ pub struct NoiseSettings {
     pub strength: Strength,
     /// Mute between words, so key clicks in pauses are not heard (see `speech_gate`).
     pub pause_mute: bool,
+    /// How the pause muting behaves (hold time, sensitivity, depth).
+    pub pause: GateParams,
     /// Keep your voice at a steady loudness (see `agc`).
     pub auto_level: bool,
     /// Reduce room echo for a room of this size (see `dereverb`); `None` = off.
@@ -34,6 +37,7 @@ impl Default for NoiseSettings {
             enabled: true,
             strength: Strength::High,
             pause_mute: true,
+            pause: GateParams::default(),
             auto_level: true,
             dereverb: None,
         }
@@ -75,6 +79,7 @@ impl SpeakerSettings {
             studio: None,
             // Other people's apps already decide when they talk.
             pause_mute: false,
+            pause: GateParams::default(),
             mute: false,
             agc: self.level_voices,
             dereverb: None,
@@ -291,6 +296,9 @@ pub struct Settings {
     pub muted: bool,
     pub mic_level: MicLevelSettings,
     pub output_level: OutputLevelSettings,
+    /// Remembered level per device (`node.name` -> 0..1 on the `wpctl` scale), for microphones
+    /// and outputs alike. Applied whenever that device appears; wins over the single values above.
+    pub device_levels: std::collections::BTreeMap<String, f32>,
     /// Show a desktop notification when you talk while muted.
     pub notify_muted_talk: bool,
     /// Current situation; sound changes are remembered for it.
@@ -319,6 +327,7 @@ impl Default for Settings {
             muted: false,
             mic_level: MicLevelSettings::default(),
             output_level: OutputLevelSettings::default(),
+            device_levels: Default::default(),
             notify_muted_talk: true,
             mode: Mode::Call,
             modes: ModeStore::default(),
@@ -341,6 +350,7 @@ impl Settings {
             auto_eq: self.auto_eq,
             studio: self.studio.effective(),
             pause_mute: self.noise.pause_mute,
+            pause: self.noise.pause.sanitized(),
             mute: self.muted,
             agc: self.noise.auto_level,
             dereverb: self.noise.dereverb.filter(|_| self.noise.enabled),
@@ -365,6 +375,22 @@ impl Settings {
             *s.modes.get_mut(m) = s.mode_values();
         }
         Ok(s)
+    }
+
+    /// The level to apply to a device: its own remembered value, else the general one.
+    pub fn level_for(&self, device: &str, output: bool) -> Option<f32> {
+        self.device_levels
+            .get(device)
+            .copied()
+            .filter(|v| v.is_finite())
+            .map(|v| v.clamp(0.0, 1.0))
+            .or_else(|| {
+                if output {
+                    self.output_level.sanitized_volume()
+                } else {
+                    self.mic_level.sanitized_volume()
+                }
+            })
     }
 
     /// The current sound settings as a mode remembers them.
@@ -594,6 +620,25 @@ mod tests {
         assert_eq!(c.studio.preset, Preset::Natural);
         assert!(c.noise.pause_mute);
         assert_eq!(Mode::parse("streaming"), Some(Mode::Streaming));
+    }
+
+    #[test]
+    fn device_levels_win_over_the_general_level() {
+        let s = Settings::default()
+            .patched(&serde_json::json!({"mic_level": {"volume": 0.8}, "device_levels": {"headset": 0.6}}))
+            .unwrap();
+        assert_eq!(s.level_for("headset", false), Some(0.6));
+        assert_eq!(s.level_for("other_mic", false), Some(0.8));
+        assert_eq!(s.level_for("speakers", true), None);
+        let s = s
+            .patched(&serde_json::json!({"device_levels": {"speakers": 0.4}}))
+            .unwrap();
+        assert_eq!(s.level_for("speakers", true), Some(0.4));
+        assert_eq!(
+            s.level_for("headset", false),
+            Some(0.6),
+            "merging keeps other devices"
+        );
     }
 
     #[test]

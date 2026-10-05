@@ -59,6 +59,11 @@
     <color type="primary" scheme_preference="dark">#0a49c9</color>
   </branding>
   <releases>
+    <release version="0.2.2" date="2026-10-05">
+      <description>
+        <p>Adjustable silence between words, volume per device, and a two-column layout for large windows.</p>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-10-05">
       <description>
         <p>Updates from within the app, verified with the project's signature before installing.</p>

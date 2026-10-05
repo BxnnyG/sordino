@@ -7,8 +7,11 @@
 //!
 //! No added latency: the analysis runs on the pipeline *input*, while the gain is applied to the
 //! output, which the noise model has already delayed by about 30 ms. That delay is the gate's
-//! look-ahead, so word onsets are not clipped. After the last voiced hop the gate holds for
-//! 200 ms (word endings, unvoiced consonants) and then fades out.
+//! look-ahead, so word onsets are not clipped. After the last voiced hop the gate holds (400 ms by
+//! default, adjustable) for word endings and unvoiced consonants, then fades pauses down to
+//! silence or, if the user prefers, only by a few dB (see [`GateParams`]).
+
+use serde::{Deserialize, Serialize};
 
 use crate::dsp::biquad::{Biquad, Coeffs, FilterKind};
 use crate::{HOP, SAMPLE_RATE};
@@ -22,15 +25,92 @@ const WIN: usize = 3 * HOP_D;
 /// Pitch lags at 8 kHz: 400 Hz .. 80 Hz.
 const MIN_LAG: usize = 20;
 const MAX_LAG: usize = 100;
-/// Normalised autocorrelation a hop needs to count as voiced.
-const PERIODICITY: f32 = 0.7;
-/// A voiced hop must also be this far above the background level (dB).
-const ABOVE_FLOOR_DB: f32 = 10.0;
-/// Consecutive voiced hops with a stable pitch (within 20 %) that open the gate.
-const OPEN_HOPS: u32 = 2;
 const PITCH_TOLERANCE: f32 = 0.2;
-/// How long the gate stays open after the last voiced hop.
-const HOLD_HOPS: u32 = 20;
+
+/// How readily the gate opens.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Sensitivity {
+    /// Opens only on clear voice: mutes the most typing, may miss very quiet speech.
+    Low,
+    #[default]
+    Normal,
+    /// Opens on quiet or breathy speech too; lets a little more typing through.
+    High,
+}
+
+impl Sensitivity {
+    pub const ALL: [Sensitivity; 3] = [Sensitivity::Low, Sensitivity::Normal, Sensitivity::High];
+
+    /// (normalised autocorrelation a voiced hop needs, dB above the background, consecutive
+    /// voiced hops with a stable pitch that open the gate)
+    fn thresholds(self) -> (f32, f32, u32) {
+        match self {
+            Sensitivity::Low => (0.75, 12.0, 3),
+            Sensitivity::Normal => (0.65, 8.0, 2),
+            Sensitivity::High => (0.55, 6.0, 1),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Sensitivity::Low => "low",
+            Sensitivity::Normal => "normal",
+            Sensitivity::High => "high",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Sensitivity> {
+        Sensitivity::ALL.into_iter().find(|x| x.as_str() == s)
+    }
+}
+
+/// User settings of the gate.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
+#[serde(default)]
+pub struct GateParams {
+    /// How long the gate stays open after the last voiced sound (ms).
+    pub hold_ms: u32,
+    pub sensitivity: Sensitivity,
+    /// How much pauses are lowered (dB, negative). At or below `MUTE_DB` pauses are silent.
+    pub depth_db: f32,
+}
+
+impl GateParams {
+    pub const MIN_HOLD_MS: u32 = 100;
+    pub const MAX_HOLD_MS: u32 = 1500;
+    pub const MUTE_DB: f32 = -60.0;
+
+    pub fn sanitized(self) -> GateParams {
+        GateParams {
+            hold_ms: self.hold_ms.clamp(Self::MIN_HOLD_MS, Self::MAX_HOLD_MS),
+            sensitivity: self.sensitivity,
+            depth_db: if self.depth_db.is_finite() {
+                self.depth_db.clamp(Self::MUTE_DB, -3.0)
+            } else {
+                Self::MUTE_DB
+            },
+        }
+    }
+
+    fn closed_gain(self) -> f32 {
+        if self.depth_db <= Self::MUTE_DB {
+            0.0
+        } else {
+            10f32.powf(self.depth_db / 20.0)
+        }
+    }
+}
+
+impl Default for GateParams {
+    fn default() -> Self {
+        GateParams {
+            hold_ms: 400,
+            sensitivity: Sensitivity::Normal,
+            depth_db: Self::MUTE_DB,
+        }
+    }
+}
 /// The background level estimate follows quieter hops at once and rises at 0.5 dB/s.
 const FLOOR_RISE_DB: f32 = 0.005;
 const FLOOR_MIN_DB: f32 = -80.0;
@@ -48,6 +128,7 @@ pub struct SpeechGate {
     gain: f32,
     attack: f32,
     release: f32,
+    params: GateParams,
 }
 
 impl Default for SpeechGate {
@@ -69,8 +150,13 @@ impl SpeechGate {
             hold: 0,
             gain: 1.0,
             attack: 1.0 - (-1.0 / (0.005 * FS)).exp(),
-            release: 1.0 - (-1.0 / (0.015 * FS)).exp(),
+            release: 1.0 - (-1.0 / (0.025 * FS)).exp(),
+            params: GateParams::default(),
         }
+    }
+
+    pub fn set_params(&mut self, p: GateParams) {
+        self.params = p.sanitized();
     }
 
     /// Whether the gate currently lets the voice through.
@@ -100,13 +186,14 @@ impl SpeechGate {
             self.window[WIN - HOP_D + k] = y / DECIM as f32;
         }
 
-        let voiced = level > self.floor_db + ABOVE_FLOOR_DB;
+        let (periodicity_needed, above_floor, open_hops) = self.params.sensitivity.thresholds();
+        let voiced = level > self.floor_db + above_floor;
         let (periodicity, lag) = if voiced {
             pitch(&self.window)
         } else {
             (0.0, 0)
         };
-        if periodicity > PERIODICITY {
+        if periodicity > periodicity_needed {
             let stable = self.run > 0
                 && (lag as f32 - self.last_lag as f32).abs()
                     <= PITCH_TOLERANCE * self.last_lag as f32;
@@ -115,8 +202,8 @@ impl SpeechGate {
         } else {
             self.run = 0;
         }
-        if self.run >= OPEN_HOPS {
-            self.hold = HOLD_HOPS;
+        if self.run >= open_hops {
+            self.hold = self.params.hold_ms.div_ceil(10);
         } else {
             self.hold = self.hold.saturating_sub(1);
         }
@@ -124,8 +211,15 @@ impl SpeechGate {
 
     /// Apply the gate to one output hop. While `active` is false the gain returns smoothly to 1.
     pub fn apply(&mut self, output: &mut [f32], active: bool) {
-        let target = if !active || self.is_open() { 1.0 } else { 0.0 };
-        if target == 1.0 && self.gain == 1.0 {
+        let target = if !active || self.is_open() {
+            1.0
+        } else {
+            self.params.closed_gain()
+        };
+        if target == self.gain {
+            for x in output.iter_mut() {
+                *x *= target;
+            }
             return;
         }
         let rate = if target > self.gain {
@@ -137,8 +231,8 @@ impl SpeechGate {
             self.gain += (target - self.gain) * rate;
             *x *= self.gain;
         }
-        if target == 1.0 && self.gain > 0.9999 {
-            self.gain = 1.0;
+        if (self.gain - target).abs() < 1e-4 {
+            self.gain = target;
         }
     }
 }
@@ -248,6 +342,41 @@ mod tests {
         let y2 = run(&mut g, &x2);
         let tail = HOP * 150..HOP * 160;
         assert!(rms(&y2[tail.clone()]) > rms(&x2[tail]) * 0.9);
+    }
+
+    #[test]
+    fn settings_change_hold_and_depth() {
+        let mut x = typing(HOP * 100);
+        x.extend(vowel(HOP * 50, 0.2));
+        x.extend(typing(HOP * 100));
+        // A long hold keeps the gate open for the clicks right after the vowel.
+        let mut g = SpeechGate::new();
+        g.set_params(GateParams {
+            hold_ms: 800,
+            ..GateParams::default()
+        });
+        let y = run(&mut g, &x);
+        let after = HOP * 155..HOP * 220;
+        assert!(rms(&y[after.clone()]) > rms(&x[after.clone()]) * 0.9);
+        // A shallow depth only lowers the pauses by 12 dB instead of muting them.
+        let mut g = SpeechGate::new();
+        g.set_params(GateParams {
+            depth_db: -12.0,
+            ..GateParams::default()
+        });
+        let y = run(&mut g, &x);
+        let pause = HOP * 220..HOP * 250;
+        let ratio = rms(&y[pause.clone()]) / rms(&x[pause]);
+        assert!((ratio - 10f32.powf(-12.0 / 20.0)).abs() < 0.02, "{ratio}");
+        // Out-of-range values are clamped.
+        let p = GateParams {
+            hold_ms: 99_999,
+            depth_db: 5.0,
+            ..GateParams::default()
+        }
+        .sanitized();
+        assert_eq!(p.hold_ms, GateParams::MAX_HOLD_MS);
+        assert_eq!(p.depth_db, -3.0);
     }
 
     #[test]
